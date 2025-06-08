@@ -22,7 +22,7 @@
 ### 1. Установка
 ```bash
 # Скачайте файл API
-wget https://raw.githubusercontent.com/yourusername/dle-api/main/api.php
+wget https://raw.githubusercontent.com/Murkirpus/DLE-API/main/api.php
 
 # Разместите на вашем сервере с DLE
 ```
