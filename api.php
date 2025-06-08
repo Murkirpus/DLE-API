@@ -8,14 +8,14 @@
 
 // НАСТРОЙКИ - ОБЯЗАТЕЛЬНО ИЗМЕНИТЕ!
 define('API_VERSION', '3.0');
-define('API_SECRET_KEY', 'your_secret_key_here'); // ЗАМЕНИТЕ НА СВОЙ КЛЮЧ!
+define('API_SECRET_KEY', 'your_secret_key'); // ЗАМЕНИТЕ НА СВОЙ КЛЮЧ!
 define('API_RATE_LIMIT', 100);
 
 // Настройки подключения к БД (заполните своими данными)
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'dj-x');
 define('DB_USER', 'dj-x');
-define('DB_PASS', 'wiNFLr6K4hVmrHX');
+define('DB_PASS', 'wiNFLr6K4hVm');
 define('DB_PREFIX', 'dle_'); // Префикс таблиц DLE
 
 // Отключаем отображение ошибок в продакшене
