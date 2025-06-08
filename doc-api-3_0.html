@@ -1,0 +1,1566 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DLE API - Полная документация</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            margin-top: 20px;
+            margin-bottom: 20px;
+            border-radius: 15px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+        }
+        
+        h1 {
+            color: #764ba2;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        h2 {
+            color: #667eea;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+            margin: 30px 0 20px 0;
+            font-size: 1.8em;
+        }
+        
+        h3 {
+            color: #764ba2;
+            margin: 25px 0 15px 0;
+            font-size: 1.4em;
+        }
+        
+        h4 {
+            color: #555;
+            margin: 20px 0 10px 0;
+            font-size: 1.2em;
+        }
+        
+        .endpoint {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            border-radius: 12px;
+            padding: 25px;
+            margin: 20px 0;
+            border-left: 5px solid #667eea;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+        }
+        
+        .method {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 25px;
+            color: white;
+            font-weight: bold;
+            margin-right: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .method.get { background: linear-gradient(45deg, #4CAF50, #45a049); }
+        .method.post { background: linear-gradient(45deg, #2196F3, #1976D2); }
+        .method.put { background: linear-gradient(45deg, #FF9800, #F57C00); }
+        .method.delete { background: linear-gradient(45deg, #F44336, #D32F2F); }
+        
+        .code-block {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 15px 0;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            border: 1px solid #333;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        
+        .code-block pre {
+            margin: 0;
+            white-space: pre-wrap;
+        }
+        
+        .response-example {
+            background: linear-gradient(135deg, #e8f5e8 0%, #f0f8f0 100%);
+            border: 1px solid #4CAF50;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 15px 0;
+        }
+        
+        .error-example {
+            background: linear-gradient(135deg, #ffe8e8 0%, #fff0f0 100%);
+            border: 1px solid #F44336;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 15px 0;
+        }
+        
+        .parameter {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        
+        .parameter-name {
+            font-weight: bold;
+            color: #667eea;
+            font-size: 1.1em;
+        }
+        
+        .parameter-type {
+            background: #667eea;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 15px;
+            font-size: 0.8em;
+            margin-left: 10px;
+        }
+        
+        .parameter-required {
+            background: #F44336;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 15px;
+            font-size: 0.8em;
+            margin-left: 5px;
+        }
+        
+        .toc {
+            background: linear-gradient(135deg, #f0f2f5 0%, #e6e9ed 100%);
+            border-radius: 12px;
+            padding: 25px;
+            margin: 25px 0;
+            border: 1px solid #dee2e6;
+        }
+        
+        .toc ul {
+            list-style: none;
+            margin-left: 20px;
+        }
+        
+        .toc li {
+            margin: 8px 0;
+        }
+        
+        .toc a {
+            color: #667eea;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            padding: 5px 10px;
+            border-radius: 5px;
+            display: inline-block;
+        }
+        
+        .toc a:hover {
+            background: #667eea;
+            color: white;
+            transform: translateX(10px);
+        }
+        
+        .warning {
+            background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+            border: 1px solid #ffc107;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            border-left: 5px solid #ffc107;
+        }
+        
+        .info {
+            background: linear-gradient(135deg, #d1ecf1 0%, #b8daff 100%);
+            border: 1px solid #17a2b8;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            border-left: 5px solid #17a2b8;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+        }
+        
+        th, td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: bold;
+        }
+        
+        tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .highlight {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: bold;
+        }
+        
+        .copy-btn {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.9em;
+            margin-top: 10px;
+            transition: all 0.3s ease;
+        }
+        
+        .copy-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+                padding: 15px;
+                border-radius: 10px;
+            }
+            
+            h1 {
+                font-size: 2em;
+            }
+            
+            h2 {
+                font-size: 1.5em;
+            }
+            
+            .code-block {
+                font-size: 0.9em;
+                padding: 15px;
+            }
+            
+            .endpoint {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 DLE API - Полная документация</h1>
+        
+        <div class="info">
+            <strong>📊 Версия API:</strong> 3.0 - Full Edition<br>
+            <strong>🔗 Базовый URL:</strong> <code>https://yoursite.com/api.php</code><br>
+            <strong>📋 Формат ответа:</strong> JSON<br>
+            <strong>🔐 Аутентификация:</strong> API ключ или логин/пароль
+        </div>
+
+        <div class="toc">
+            <h3>📚 Содержание</h3>
+            <ul>
+                <li><a href="#auth">🔐 Аутентификация</a></li>
+                <li><a href="#news-management">📝 Управление новостями</a>
+                    <ul>
+                        <li><a href="#add-news">Добавление новости</a></li>
+                        <li><a href="#update-news">Обновление новости</a></li>
+                        <li><a href="#delete-news">Удаление новости</a></li>
+                        <li><a href="#get-news-status">Статус новости</a></li>
+                    </ul>
+                </li>
+                <li><a href="#news-reading">📖 Получение новостей</a>
+                    <ul>
+                        <li><a href="#get-news">Список новостей</a></li>
+                        <li><a href="#get-news-by-id">Новость по ID</a></li>
+                        <li><a href="#search-news">Поиск новостей</a></li>
+                    </ul>
+                </li>
+                <li><a href="#categories">🗂️ Категории</a>
+                    <ul>
+                        <li><a href="#get-categories">Получение категорий</a></li>
+                        <li><a href="#add-category">Добавление категории</a></li>
+                    </ul>
+                </li>
+                <li><a href="#stats">📊 Статистика</a></li>
+                <li><a href="#test">🔧 Тестирование</a></li>
+                <li><a href="#errors">❌ Коды ошибок</a></li>
+                <li><a href="#examples">💡 Примеры использования</a></li>
+            </ul>
+        </div>
+
+        <h2 id="auth">🔐 Аутентификация</h2>
+        
+        <p>API поддерживает два способа аутентификации:</p>
+        
+        <h3>1. API ключ (рекомендуется)</h3>
+        <div class="parameter">
+            <span class="parameter-name">api_key</span>
+            <span class="parameter-type">string</span>
+            <span class="parameter-required">обязательно</span>
+            <p>Ваш секретный API ключ, который нужно настроить в файле api.php</p>
+        </div>
+
+        <h3>2. Логин и пароль</h3>
+        <div class="parameter">
+            <span class="parameter-name">username</span>
+            <span class="parameter-type">string</span>
+            <span class="parameter-required">обязательно</span>
+            <p>Имя пользователя из DLE</p>
+        </div>
+        <div class="parameter">
+            <span class="parameter-name">password</span>
+            <span class="parameter-type">string</span>
+            <span class="parameter-required">обязательно</span>
+            <p>Пароль пользователя из DLE</p>
+        </div>
+
+        <div class="warning">
+            <strong>⚠️ Важно:</strong> Аутентификация НЕ требуется для операций чтения (получение новостей, поиск, категории).
+        </div>
+
+        <h2 id="news-management">📝 Управление новостями</h2>
+
+        <div class="endpoint" id="add-news">
+            <h3><span class="method post">POST</span> Добавление новости</h3>
+            <p><strong>Action:</strong> <code>add_news</code></p>
+            
+            <h4>Обязательные параметры:</h4>
+            <div class="parameter">
+                <span class="parameter-name">title</span>
+                <span class="parameter-type">string</span>
+                <span class="parameter-required">обязательно</span>
+                <p>Заголовок новости</p>
+            </div>
+            <div class="parameter">
+                <span class="parameter-name">short_story</span>
+                <span class="parameter-type">string</span>
+                <span class="parameter-required">обязательно</span>
+                <p>Краткое описание новости</p>
+            </div>
+            <div class="parameter">
+                <span class="parameter-name">full_story</span>
+                <span class="parameter-type">string</span>
+                <span class="parameter-required">обязательно</span>
+                <p>Полный текст новости</p>
+            </div>
+
+            <h4>Дополнительные параметры:</h4>
+            <div class="parameter">
+                <span class="parameter-name">category</span>
+                <span class="parameter-type">integer</span>
+                <p>ID категории (по умолчанию: 1)</p>
+            </div>
+            <div class="parameter">
+                <span class="parameter-name">author</span>
+                <span class="parameter-type">string</span>
+                <p>Автор новости (по умолчанию: admin)</p>
+            </div>
+            <div class="parameter">
+                <span class="parameter-name">keywords</span>
+                <span class="parameter-type">string</span>
+                <p>Ключевые слова</p>
+            </div>
+            <div class="parameter">
+                <span class="parameter-name">description</span>
+                <span class="parameter-type">string</span>
+                <p>Мета-описание</p>
+            </div>
+            <div class="parameter">
+                <span class="parameter-name">approve</span>
+                <span class="parameter-type">integer</span>
+                <p>Модерация (1 - одобрено, 0 - на модерации)</p>
+            </div>
+            <div class="parameter">
+                <span class="parameter-name">allow_comments</span>
+                <span class="parameter-type">integer</span>
+                <p>Разрешить комментарии (1 - да, 0 - нет)</p>
+            </div>
+
+            <h4>Пример запроса (cURL):</h4>
+            <div class="code-block">
+                <pre>curl -X POST https://yoursite.com/api.php \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "add_news",
+    "api_key": "your_secret_key_here",
+    "title": "Заголовок новости",
+    "short_story": "Краткое описание новости...",
+    "full_story": "Полный текст новости с подробностями...",
+    "category": 2,
+    "keywords": "новость, технологии",
+    "description": "Мета-описание для SEO"
+  }'</pre>
+            </div>
+
+            <h4>Пример запроса (PHP):</h4>
+            <div class="code-block">
+                <pre>$data = [
+    'action' => 'add_news',
+    'api_key' => 'your_secret_key_here',
+    'title' => 'Заголовок новости',
+    'short_story' => 'Краткое описание новости...',
+    'full_story' => 'Полный текст новости с подробностями...',
+    'category' => 2,
+    'keywords' => 'новость, технологии',
+    'description' => 'Мета-описание для SEO'
+];
+
+$ch = curl_init();
+curl_setopt($ch, CURLOPT_URL, 'https://yoursite.com/api.php');
+curl_setopt($ch, CURLOPT_POST, true);
+curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+$response = curl_exec($ch);
+$result = json_decode($response, true);
+curl_close($ch);
+
+print_r($result);</pre>
+            </div>
+
+            <h4>Успешный ответ:</h4>
+            <div class="response-example">
+                <div class="code-block">
+                    <pre>{
+  "success": true,
+  "data": {
+    "news_id": 123,
+    "title": "Заголовок новости",
+    "alt_name": "zagolovok-novosti-1670000000",
+    "url": "https://yoursite.com/123-zagolovok-novosti-1670000000.html",
+    "table_used": "dle_post",
+    "fields_used": 12
+  },
+  "message": "Новость успешно добавлена",
+  "timestamp": 1670000000,
+  "api_version": "3.0"
+}</pre>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint" id="update-news">
+            <h3><span class="method post">POST</span> Обновление новости</h3>
+            <p><strong>Action:</strong> <code>update_news</code></p>
+            
+            <h4>Обязательные параметры:</h4>
+            <div class="parameter">
+                <span class="parameter-name">news_id</span>
+                <span class="parameter-type">integer</span>
+                <span class="parameter-required">обязательно</span>
+                <p>ID новости для обновления</p>
+            </div>
+
+            <h4>Параметры для обновления (любые):</h4>
+            <div class="parameter">
+                <span class="parameter-name">title</span>
+                <span class="parameter-type">string</span>
+                <p>Новый заголовок</p>
+            </div>
+            <div class="parameter">
+                <span class="parameter-name">short_story</span>
+                <span class="parameter-type">string</span>
+                <p>Новое краткое описание</p>
+            </div>
+            <div class="parameter">
+                <span class="parameter-name">full_story</span>
+                <span class="parameter-type">string</span>
+                <p>Новый полный текст</p>
+            </div>
+
+            <h4>Пример запроса (cURL):</h4>
+            <div class="code-block">
+                <pre>curl -X POST https://yoursite.com/api.php \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "update_news",
+    "api_key": "your_secret_key_here",
+    "news_id": 123,
+    "title": "Обновленный заголовок",
+    "approve": 1
+  }'</pre>
+            </div>
+
+            <h4>Успешный ответ:</h4>
+            <div class="response-example">
+                <div class="code-block">
+                    <pre>{
+  "success": true,
+  "data": {
+    "news_id": 123,
+    "updated_fields": 2,
+    "affected_rows": 1
+  },
+  "message": "Новость успешно обновлена",
+  "timestamp": 1670000000,
+  "api_version": "3.0"
+}</pre>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint" id="delete-news">
+            <h3><span class="method post">POST</span> Удаление новости</h3>
+            <p><strong>Action:</strong> <code>delete_news</code></p>
+            
+            <h4>Обязательные параметры:</h4>
+            <div class="parameter">
+                <span class="parameter-name">news_id</span>
+                <span class="parameter-type">integer</span>
+                <span class="parameter-required">обязательно</span>
+                <p>ID новости для удаления</p>
+            </div>
+
+            <h4>Пример запроса (cURL):</h4>
+            <div class="code-block">
+                <pre>curl -X POST https://yoursite.com/api.php \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "delete_news",
+    "api_key": "your_secret_key_here",
+    "news_id": 123
+  }'</pre>
+            </div>
+
+            <h4>Успешный ответ:</h4>
+            <div class="response-example">
+                <div class="code-block">
+                    <pre>{
+  "success": true,
+  "data": {
+    "news_id": 123,
+    "title": "Удаленная новость",
+    "deleted": true
+  },
+  "message": "Новость успешно удалена",
+  "timestamp": 1670000000,
+  "api_version": "3.0"
+}</pre>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint" id="get-news-status">
+            <h3><span class="method get">GET</span> Статус новости</h3>
+            <p><strong>Action:</strong> <code>get_news_status</code></p>
+            
+            <h4>Обязательные параметры:</h4>
+            <div class="parameter">
+                <span class="parameter-name">news_id</span>
+                <span class="parameter-type">integer</span>
+                <span class="parameter-required">обязательно</span>
+                <p>ID новости для получения статуса</p>
+            </div>
+
+            <h4>Пример запроса (cURL):</h4>
+            <div class="code-block">
+                <pre>curl -X GET "https://yoursite.com/api.php?action=get_news_status&news_id=123&api_key=your_secret_key_here"</pre>
+            </div>
+
+            <h4>Пример запроса (PHP):</h4>
+            <div class="code-block">
+                <pre>$params = [
+    'action' => 'get_news_status',
+    'news_id' => 123,
+    'api_key' => 'your_secret_key_here'
+];
+
+$url = 'https://yoursite.com/api.php?' . http_build_query($params);
+$response = file_get_contents($url);
+$result = json_decode($response, true);
+
+print_r($result);</pre>
+            </div>
+
+            <h4>Успешный ответ:</h4>
+            <div class="response-example">
+                <div class="code-block">
+                    <pre>{
+  "success": true,
+  "data": {
+    "id": 123,
+    "title": "Заголовок новости",
+    "approve": 1,
+    "allow_main": 1,
+    "date": "2023-12-03 15:30:00",
+    "views": 150,
+    "comments": 5
+  },
+  "timestamp": 1670000000,
+  "api_version": "3.0"
+}</pre>
+                </div>
+            </div>
+        </div>
+
+        <h2 id="news-reading">📖 Получение новостей</h2>
+
+        <div class="endpoint" id="get-news">
+            <h3><span class="method get">GET</span> Список новостей</h3>
+            <p><strong>Action:</strong> <code>get_news</code></p>
+            
+            <h4>Параметры:</h4>
+            <div class="parameter">
+                <span class="parameter-name">limit</span>
+                <span class="parameter-type">integer</span>
+                <p>Количество новостей (по умолчанию: 10, максимум: 100)</p>
+            </div>
+            <div class="parameter">
+                <span class="parameter-name">offset</span>
+                <span class="parameter-type">integer</span>
+                <p>Смещение для пагинации (по умолчанию: 0)</p>
+            </div>
+            <div class="parameter">
+                <span class="parameter-name">category</span>
+                <span class="parameter-type">integer</span>
+                <p>Фильтр по категории (0 - все категории)</p>
+            </div>
+            <div class="parameter">
+                <span class="parameter-name">approved_only</span>
+                <span class="parameter-type">integer</span>
+                <p>Только одобренные новости (1 - да, 0 - все)</p>
+            </div>
+            <div class="parameter">
+                <span class="parameter-name">order_by</span>
+                <span class="parameter-type">string</span>
+                <p>Поле сортировки (date, id, title, views, rating)</p>
+            </div>
+            <div class="parameter">
+                <span class="parameter-name">order_direction</span>
+                <span class="parameter-type">string</span>
+                <p>Направление сортировки (ASC, DESC)</p>
+            </div>
+
+            <h4>Пример запроса (cURL):</h4>
+            <div class="code-block">
+                <pre>curl -X GET "https://yoursite.com/api.php?action=get_news&limit=20&category=2&order_by=date&order_direction=DESC"</pre>
+            </div>
+
+            <h4>Пример запроса (PHP):</h4>
+            <div class="code-block">
+                <pre>$params = [
+    'action' => 'get_news',
+    'limit' => 20,
+    'category' => 2,
+    'order_by' => 'date',
+    'order_direction' => 'DESC'
+];
+
+$url = 'https://yoursite.com/api.php?' . http_build_query($params);
+$response = file_get_contents($url);
+$result = json_decode($response, true);
+
+print_r($result);</pre>
+            </div>
+
+            <h4>Успешный ответ:</h4>
+            <div class="response-example">
+                <div class="code-block">
+                    <pre>{
+  "success": true,
+  "data": {
+    "news": [
+      {
+        "id": 123,
+        "title": "Заголовок новости",
+        "short_story": "Краткое описание...",
+        "date": "2023-12-03 15:30:00",
+        "category": 2,
+        "author": "admin",
+        "views": 150,
+        "comments": 5,
+        "url": "https://yoursite.com/123-zagolovok-novosti.html"
+      },
+      ...
+    ],
+    "total": 45,
+    "limit": 20,
+    "offset": 0,
+    "has_more": true
+  },
+  "timestamp": 1670000000,
+  "api_version": "3.0"
+}</pre>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint" id="get-news-by-id">
+            <h3><span class="method get">GET</span> Новость по ID</h3>
+            <p><strong>Action:</strong> <code>get_news_by_id</code></p>
+            
+            <h4>Обязательные параметры:</h4>
+            <div class="parameter">
+                <span class="parameter-name">news_id</span>
+                <span class="parameter-type">integer</span>
+                <span class="parameter-required">обязательно</span>
+                <p>ID новости</p>
+            </div>
+
+            <h4>Пример запроса (cURL):</h4>
+            <div class="code-block">
+                <pre>curl -X GET "https://yoursite.com/api.php?action=get_news_by_id&news_id=123"</pre>
+            </div>
+
+            <h4>Пример запроса (PHP):</h4>
+            <div class="code-block">
+                <pre>$url = 'https://yoursite.com/api.php?action=get_news_by_id&news_id=123';
+$response = file_get_contents($url);
+$result = json_decode($response, true);
+
+print_r($result);</pre>
+            </div>
+
+            <h4>Успешный ответ:</h4>
+            <div class="response-example">
+                <div class="code-block">
+                    <pre>{
+  "success": true,
+  "data": {
+    "id": 123,
+    "title": "Заголовок новости",
+    "short_story": "Краткое описание новости...",
+    "full_story": "Полный текст новости с подробностями...",
+    "date": "2023-12-03 15:30:00",
+    "category": 2,
+    "author": "admin",
+    "views": 151,
+    "comments": 5,
+    "rating": 4.5,
+    "keywords": "новость, технологии",
+    "description": "Мета-описание",
+    "url": "https://yoursite.com/123-zagolovok-novosti.html",
+    "xfields": {
+      "custom_field": "значение"
+    }
+  },
+  "timestamp": 1670000000,
+  "api_version": "3.0"
+}</pre>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint" id="search-news">
+            <h3><span class="method get">GET</span> Поиск новостей</h3>
+            <p><strong>Action:</strong> <code>search_news</code></p>
+            
+            <h4>Обязательные параметры:</h4>
+            <div class="parameter">
+                <span class="parameter-name">query</span>
+                <span class="parameter-type">string</span>
+                <span class="parameter-required">обязательно</span>
+                <p>Поисковый запрос</p>
+            </div>
+
+            <h4>Дополнительные параметры:</h4>
+            <div class="parameter">
+                <span class="parameter-name">limit</span>
+                <span class="parameter-type">integer</span>
+                <p>Количество результатов (по умолчанию: 10)</p>
+            </div>
+            <div class="parameter">
+                <span class="parameter-name">offset</span>
+                <span class="parameter-type">integer</span>
+                <p>Смещение для пагинации</p>
+            </div>
+
+            <h4>Пример запроса (cURL):</h4>
+            <div class="code-block">
+                <pre>curl -X GET "https://yoursite.com/api.php?action=search_news&query=технологии&limit=10"</pre>
+            </div>
+
+            <h4>Пример запроса (PHP):</h4>
+            <div class="code-block">
+                <pre>$params = [
+    'action' => 'search_news',
+    'query' => 'технологии',
+    'limit' => 10
+];
+
+$url = 'https://yoursite.com/api.php?' . http_build_query($params);
+$response = file_get_contents($url);
+$result = json_decode($response, true);
+
+print_r($result);</pre>
+            </div>
+
+            <h4>Успешный ответ:</h4>
+            <div class="response-example">
+                <div class="code-block">
+                    <pre>{
+  "success": true,
+  "data": {
+    "news": [
+      {
+        "id": 123,
+        "title": "Новые технологии в 2023",
+        "short_story": "Обзор последних технологических достижений...",
+        "date": "2023-12-03 15:30:00",
+        "url": "https://yoursite.com/123-novye-tehnologii.html"
+      }
+    ],
+    "total": 15,
+    "query": "технологии",
+    "limit": 10,
+    "offset": 0
+  },
+  "timestamp": 1670000000,
+  "api_version": "3.0"
+}</pre>
+                </div>
+            </div>
+        </div>
+
+        <h2 id="categories">🗂️ Категории</h2>
+
+        <div class="endpoint" id="get-categories">
+            <h3><span class="method get">GET</span> Получение категорий</h3>
+            <p><strong>Action:</strong> <code>get_categories</code></p>
+            
+            <h4>Пример запроса (cURL):</h4>
+            <div class="code-block">
+                <pre>curl -X GET "https://yoursite.com/api.php?action=get_categories"</pre>
+            </div>
+
+            <h4>Пример запроса (PHP):</h4>
+            <div class="code-block">
+                <pre>$url = 'https://yoursite.com/api.php?action=get_categories';
+$response = file_get_contents($url);
+$result = json_decode($response, true);
+
+print_r($result);</pre>
+            </div>
+
+            <h4>Успешный ответ:</h4>
+            <div class="response-example">
+                <div class="code-block">
+                    <pre>{
+  "success": true,
+  "data": {
+    "categories": [
+      {
+        "id": 1,
+        "name": "Основная",
+        "alt_name": "main",
+        "description": "Основная категория",
+        "sort": 1
+      },
+      {
+        "id": 2,
+        "name": "Новости",
+        "alt_name": "news",
+        "description": "Новости сайта",
+        "sort": 2
+      },
+      {
+        "id": 3,
+        "name": "Технологии",
+        "alt_name": "tech",
+        "description": "Технологические новости",
+        "sort": 3
+      }
+    ]
+  },
+  "timestamp": 1670000000,
+  "api_version": "3.0"
+}</pre>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint" id="add-category">
+            <h3><span class="method post">POST</span> Добавление категории</h3>
+            <p><strong>Action:</strong> <code>add_category</code></p>
+            
+            <h4>Обязательные параметры:</h4>
+            <div class="parameter">
+                <span class="parameter-name">name</span>
+                <span class="parameter-type">string</span>
+                <span class="parameter-required">обязательно</span>
+                <p>Название категории</p>
+            </div>
+
+            <h4>Дополнительные параметры:</h4>
+            <div class="parameter">
+                <span class="parameter-name">alt_name</span>
+                <span class="parameter-type">string</span>
+                <p>Альтернативное имя (создается автоматически)</p>
+            </div>
+            <div class="parameter">
+                <span class="parameter-name">description</span>
+                <span class="parameter-type">string</span>
+                <p>Описание категории</p>
+            </div>
+            <div class="parameter">
+                <span class="parameter-name">sort</span>
+                <span class="parameter-type">integer</span>
+                <p>Порядок сортировки</p>
+            </div>
+
+            <h4>Пример запроса (cURL):</h4>
+            <div class="code-block">
+                <pre>curl -X POST https://yoursite.com/api.php \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "add_category",
+    "api_key": "your_secret_key_here",
+    "name": "Спорт",
+    "description": "Спортивные новости",
+    "sort": 4
+  }'</pre>
+            </div>
+
+            <h4>Пример запроса (PHP):</h4>
+            <div class="code-block">
+                <pre>$data = [
+    'action' => 'add_category',
+    'api_key' => 'your_secret_key_here',
+    'name' => 'Спорт',
+    'description' => 'Спортивные новости',
+    'sort' => 4
+];
+
+$ch = curl_init();
+curl_setopt($ch, CURLOPT_URL, 'https://yoursite.com/api.php');
+curl_setopt($ch, CURLOPT_POST, true);
+curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+$response = curl_exec($ch);
+$result = json_decode($response, true);
+curl_close($ch);</pre>
+            </div>
+
+            <h4>Успешный ответ:</h4>
+            <div class="response-example">
+                <div class="code-block">
+                    <pre>{
+  "success": true,
+  "data": {
+    "category_id": 4,
+    "name": "Спорт",
+    "alt_name": "sport-1670000000"
+  },
+  "message": "Категория успешно добавлена",
+  "timestamp": 1670000000,
+  "api_version": "3.0"
+}</pre>
+                </div>
+            </div>
+        </div>
+
+        <h2 id="stats">📊 Статистика</h2>
+
+        <div class="endpoint">
+            <h3><span class="method get">GET</span> Получение статистики</h3>
+            <p><strong>Action:</strong> <code>get_stats</code></p>
+            
+            <div class="info">
+                <strong>ℹ️ Примечание:</strong> Для получения статистики требуется аутентификация.
+            </div>
+
+            <h4>Пример запроса (cURL):</h4>
+            <div class="code-block">
+                <pre>curl -X GET "https://yoursite.com/api.php?action=get_stats&api_key=your_secret_key_here"</pre>
+            </div>
+
+            <h4>Пример запроса (PHP):</h4>
+            <div class="code-block">
+                <pre>$url = 'https://yoursite.com/api.php?action=get_stats&api_key=your_secret_key_here';
+$response = file_get_contents($url);
+$result = json_decode($response, true);
+
+print_r($result);</pre>
+            </div>
+
+            <h4>Успешный ответ:</h4>
+            <div class="response-example">
+                <div class="code-block">
+                    <pre>{
+  "success": true,
+  "data": {
+    "total_news": 150,
+    "approved_news": 140,
+    "pending_news": 10,
+    "total_categories": 5,
+    "total_views": 25430,
+    "average_views": 169.53,
+    "total_comments": 842,
+    "popular_news": [
+      {
+        "id": 89,
+        "title": "Самая популярная новость",
+        "views": 1250
+      },
+      {
+        "id": 67,
+        "title": "Вторая по популярности",
+        "views": 890
+      }
+    ]
+  },
+  "timestamp": 1670000000,
+  "api_version": "3.0"
+}</pre>
+                </div>
+            </div>
+        </div>
+
+        <h2 id="test">🔧 Тестирование</h2>
+
+        <div class="endpoint">
+            <h3><span class="method get">GET</span> Тест соединения</h3>
+            <p><strong>Action:</strong> <code>test</code> или <code>test_connection</code></p>
+            
+            <h4>Пример запроса (cURL):</h4>
+            <div class="code-block">
+                <pre>curl -X GET "https://yoursite.com/api.php?action=test"</pre>
+            </div>
+
+            <h4>Пример запроса (PHP):</h4>
+            <div class="code-block">
+                <pre>$url = 'https://yoursite.com/api.php?action=test';
+$response = file_get_contents($url);
+$result = json_decode($response, true);
+
+print_r($result);</pre>
+            </div>
+
+            <h4>Успешный ответ:</h4>
+            <div class="response-example">
+                <div class="code-block">
+                    <pre>{
+  "success": true,
+  "data": {
+    "api_status": "working",
+    "version": "3.0",
+    "timestamp": 1670000000,
+    "datetime": "2023-12-03 15:30:00",
+    "database_connected": true,
+    "tables_found": {
+      "posts": "dle_post",
+      "categories": "dle_category",
+      "users": "dle_users"
+    },
+    "server_info": {
+      "php_version": "8.1.0",
+      "server_software": "Apache/2.4.41",
+      "request_method": "GET",
+      "user_agent": "curl/7.68.0"
+    },
+    "available_actions": [
+      "add_news", "update_news", "delete_news", "get_news_status",
+      "get_news", "get_news_by_id", "search_news",
+      "get_categories", "add_category",
+      "get_stats"
+    ]
+  },
+  "message": "API работает корректно",
+  "timestamp": 1670000000,
+  "api_version": "3.0"
+}</pre>
+                </div>
+            </div>
+        </div>
+
+        <h2 id="errors">❌ Коды ошибок</h2>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Код</th>
+                    <th>Название</th>
+                    <th>Описание</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>200</td>
+                    <td>OK</td>
+                    <td>Запрос выполнен успешно</td>
+                </tr>
+                <tr>
+                    <td>400</td>
+                    <td>Bad Request</td>
+                    <td>Некорректные параметры запроса</td>
+                </tr>
+                <tr>
+                    <td>401</td>
+                    <td>Unauthorized</td>
+                    <td>Ошибка аутентификации</td>
+                </tr>
+                <tr>
+                    <td>404</td>
+                    <td>Not Found</td>
+                    <td>Запрашиваемый ресурс не найден</td>
+                </tr>
+                <tr>
+                    <td>429</td>
+                    <td>Too Many Requests</td>
+                    <td>Превышен лимит запросов</td>
+                </tr>
+                <tr>
+                    <td>500</td>
+                    <td>Internal Server Error</td>
+                    <td>Внутренняя ошибка сервера</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h4>Примеры ошибок:</h4>
+
+        <div class="error-example">
+            <h4>400 - Некорректные параметры:</h4>
+            <div class="code-block">
+                <pre>{
+  "success": false,
+  "error": "Поле 'title' обязательно",
+  "code": 400,
+  "timestamp": 1670000000,
+  "api_version": "3.0"
+}</pre>
+            </div>
+        </div>
+
+        <div class="error-example">
+            <h4>401 - Ошибка аутентификации:</h4>
+            <div class="code-block">
+                <pre>{
+  "success": false,
+  "error": "Ошибка аутентификации",
+  "code": 401,
+  "timestamp": 1670000000,
+  "api_version": "3.0"
+}</pre>
+            </div>
+        </div>
+
+        <div class="error-example">
+            <h4>404 - Не найдено:</h4>
+            <div class="code-block">
+                <pre>{
+  "success": false,
+  "error": "Новость не найдена",
+  "code": 404,
+  "timestamp": 1670000000,
+  "api_version": "3.0"
+}</pre>
+            </div>
+        </div>
+
+        <h2 id="examples">💡 Практические примеры</h2>
+
+        <h3>🔥 Полный пример работы с API на PHP</h3>
+
+        <div class="code-block">
+            <pre><?php
+class DLEAPIClient {
+    private $api_url;
+    private $api_key;
+    
+    public function __construct($url, $key) {
+        $this->api_url = $url;
+        $this->api_key = $key;
+    }
+    
+    private function makeRequest($data, $method = 'POST') {
+        $ch = curl_init();
+        
+        if ($method === 'GET') {
+            $url = $this->api_url . '?' . http_build_query($data);
+            curl_setopt($ch, CURLOPT_URL, $url);
+        } else {
+            $data['api_key'] = $this->api_key;
+            curl_setopt($ch, CURLOPT_URL, $this->api_url);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+        }
+        
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        
+        $response = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        
+        if ($response === false) {
+            throw new Exception('Ошибка соединения с API');
+        }
+        
+        $result = json_decode($response, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new Exception('Некорректный JSON ответ');
+        }
+        
+        return $result;
+    }
+    
+    // Добавление новости
+    public function addNews($title, $short_story, $full_story, $options = []) {
+        $data = array_merge([
+            'action' => 'add_news',
+            'title' => $title,
+            'short_story' => $short_story,
+            'full_story' => $full_story
+        ], $options);
+        
+        return $this->makeRequest($data);
+    }
+    
+    // Получение списка новостей
+    public function getNews($limit = 10, $offset = 0, $category = 0) {
+        $data = [
+            'action' => 'get_news',
+            'limit' => $limit,
+            'offset' => $offset,
+            'category' => $category
+        ];
+        
+        return $this->makeRequest($data, 'GET');
+    }
+    
+    // Получение новости по ID
+    public function getNewsById($news_id) {
+        $data = [
+            'action' => 'get_news_by_id',
+            'news_id' => $news_id
+        ];
+        
+        return $this->makeRequest($data, 'GET');
+    }
+    
+    // Поиск новостей
+    public function searchNews($query, $limit = 10) {
+        $data = [
+            'action' => 'search_news',
+            'query' => $query,
+            'limit' => $limit
+        ];
+        
+        return $this->makeRequest($data, 'GET');
+    }
+    
+    // Получение категорий
+    public function getCategories() {
+        $data = ['action' => 'get_categories'];
+        return $this->makeRequest($data, 'GET');
+    }
+    
+    // Обновление новости
+    public function updateNews($news_id, $updates) {
+        $data = array_merge([
+            'action' => 'update_news',
+            'news_id' => $news_id
+        ], $updates);
+        
+        return $this->makeRequest($data);
+    }
+    
+    // Удаление новости
+    public function deleteNews($news_id) {
+        $data = [
+            'action' => 'delete_news',
+            'news_id' => $news_id
+        ];
+        
+        return $this->makeRequest($data);
+    }
+    
+    // Получение статистики
+    public function getStats() {
+        $data = ['action' => 'get_stats'];
+        return $this->makeRequest($data, 'GET');
+    }
+}
+
+// Использование:
+try {
+    $api = new DLEAPIClient('https://yoursite.com/api.php', 'your_secret_key_here');
+    
+    // Тест соединения
+    $test = $api->makeRequest(['action' => 'test'], 'GET');
+    echo "API Status: " . ($test['success'] ? 'OK' : 'Error') . "\n";
+    
+    // Получение новостей
+    $news = $api->getNews(5);
+    if ($news['success']) {
+        echo "Найдено новостей: " . $news['data']['total'] . "\n";
+        foreach ($news['data']['news'] as $item) {
+            echo "- " . $item['title'] . "\n";
+        }
+    }
+    
+    // Добавление новости
+    $result = $api->addNews(
+        'Тестовая новость',
+        'Краткое описание тестовой новости',
+        'Полный текст тестовой новости с подробным описанием',
+        [
+            'category' => 2,
+            'keywords' => 'тест, api',
+            'approve' => 1
+        ]
+    );
+    
+    if ($result['success']) {
+        echo "Новость добавлена с ID: " . $result['data']['news_id'] . "\n";
+        echo "URL: " . $result['data']['url'] . "\n";
+    }
+    
+} catch (Exception $e) {
+    echo "Ошибка: " . $e->getMessage() . "\n";
+}
+?></pre>
+        </div>
+
+        <h3>🚀 Пример интеграции с JavaScript (AJAX)</h3>
+
+        <div class="code-block">
+            <pre>class DLEAPIClient {
+    constructor(apiUrl, apiKey) {
+        this.apiUrl = apiUrl;
+        this.apiKey = apiKey;
+    }
+    
+    async makeRequest(data, method = 'POST') {
+        const options = {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        };
+        
+        if (method === 'POST') {
+            data.api_key = this.apiKey;
+            options.body = JSON.stringify(data);
+        } else {
+            const params = new URLSearchParams(data);
+            this.apiUrl += '?' + params.toString();
+        }
+        
+        try {
+            const response = await fetch(this.apiUrl, options);
+            const result = await response.json();
+            return result;
+        } catch (error) {
+            throw new Error('Ошибка соединения: ' + error.message);
+        }
+    }
+    
+    async getNews(limit = 10, category = 0) {
+        return await this.makeRequest({
+            action: 'get_news',
+            limit: limit,
+            category: category
+        }, 'GET');
+    }
+    
+    async addNews(title, shortStory, fullStory, options = {}) {
+        const data = Object.assign({
+            action: 'add_news',
+            title: title,
+            short_story: shortStory,
+            full_story: fullStory
+        }, options);
+        
+        return await this.makeRequest(data);
+    }
+    
+    async searchNews(query, limit = 10) {
+        return await this.makeRequest({
+            action: 'search_news',
+            query: query,
+            limit: limit
+        }, 'GET');
+    }
+}
+
+// Использование:
+const api = new DLEAPIClient('https://yoursite.com/api.php', 'your_secret_key_here');
+
+// Получение новостей
+api.getNews(10, 2).then(result => {
+    if (result.success) {
+        console.log('Новостей найдено:', result.data.total);
+        result.data.news.forEach(news => {
+            console.log('- ' + news.title);
+        });
+    } else {
+        console.error('Ошибка:', result.error);
+    }
+}).catch(error => {
+    console.error('Ошибка запроса:', error);
+});
+
+// Поиск новостей
+api.searchNews('технологии').then(result => {
+    if (result.success) {
+        console.log('Результатов поиска:', result.data.total);
+    }
+});</pre>
+        </div>
+
+        <h3>⚡ Bash скрипт для массовых операций</h3>
+
+        <div class="code-block">
+            <pre>#!/bin/bash
+
+API_URL="https://yoursite.com/api.php"
+API_KEY="your_secret_key_here"
+
+# Функция для добавления новости
+add_news() {
+    local title="$1"
+    local short="$2"
+    local full="$3"
+    local category="$4"
+    
+    curl -s -X POST "$API_URL" \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"action\": \"add_news\",
+            \"api_key\": \"$API_KEY\",
+            \"title\": \"$title\",
+            \"short_story\": \"$short\",
+            \"full_story\": \"$full\",
+            \"category\": $category,
+            \"approve\": 1
+        }" | jq '.'
+}
+
+# Функция для получения статистики
+get_stats() {
+    curl -s -X GET "$API_URL?action=get_stats&api_key=$API_KEY" | jq '.'
+}
+
+# Массовое добавление новостей из файла
+while IFS='|' read -r title short full category; do
+    echo "Добавление: $title"
+    result=$(add_news "$title" "$short" "$full" "$category")
+    success=$(echo "$result" | jq -r '.success')
+    
+    if [ "$success" = "true" ]; then
+        news_id=$(echo "$result" | jq -r '.data.news_id')
+        echo "✓ Добавлена с ID: $news_id"
+    else
+        error=$(echo "$result" | jq -r '.error')
+        echo "✗ Ошибка: $error"
+    fi
+    
+    sleep 1  # Пауза между запросами
+done < news_list.txt
+
+echo "Финальная статистика:"
+get_stats</pre>
+        </div>
+
+        <h2>🛡️ Безопасность и рекомендации</h2>
+
+        <div class="warning">
+            <h4>⚠️ Важные моменты безопасности:</h4>
+            <ul>
+                <li><strong>Смените API ключ:</strong> Обязательно замените <code>your_secret_key_here</code> на уникальный секретный ключ</li>
+                <li><strong>HTTPS:</strong> Используйте только HTTPS для защиты данных</li>
+                <li><strong>Лимиты:</strong> API имеет встроенную защиту от превышения лимитов запросов</li>
+                <li><strong>Логирование:</strong> Все запросы логируются в файл <code>api.log</code></li>
+                <li><strong>Валидация:</strong> Все входные данные проходят валидацию</li>
+            </ul>
+        </div>
+
+        <div class="info">
+            <h4>💡 Рекомендации по использованию:</h4>
+            <ul>
+                <li><strong>Кэширование:</strong> Кэшируйте часто запрашиваемые данные (категории, популярные новости)</li>
+                <li><strong>Пагинация:</strong> Используйте пагинацию для больших объемов данных</li>
+                <li><strong>Обработка ошибок:</strong> Всегда проверяйте поле <code>success</code> в ответе</li>
+                <li><strong>Резервные копии:</strong> Регулярно создавайте бэкапы БД</li>
+                <li><strong>Мониторинг:</strong> Следите за логами API для выявления проблем</li>
+            </ul>
+        </div>
+
+        <h2>📞 Поддержка</h2>
+
+        <div class="info">
+            <p>Если у вас возникли вопросы или проблемы с API, проверьте:</p>
+            <ul>
+                <li>🔧 <strong>Тест соединения:</strong> <code>GET /api.php?action=test</code></li>
+                <li>📋 <strong>Логи API:</strong> файл <code>api.log</code></li>
+                <li>🗄️ <strong>Настройки БД:</strong> проверьте подключение к базе данных</li>
+                <li>🔑 <strong>API ключ:</strong> убедитесь что ключ корректен</li>
+            </ul>
+        </div>
+
+        <div style="text-align: center; margin-top: 40px; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 10px;">
+            <h3>🎉 Готово к использованию!</h3>
+            <p>API полностью настроен и готов к работе. Удачного использования!</p>
+        </div>
+    </div>
+
+    <script>
+        // Функция копирования кода
+        document.querySelectorAll('.code-block').forEach(block => {
+            const button = document.createElement('button');
+            button.className = 'copy-btn';
+            button.textContent = '📋 Копировать';
+            button.onclick = () => {
+                const text = block.querySelector('pre').textContent;
+                navigator.clipboard.writeText(text).then(() => {
+                    button.textContent = '✅ Скопировано!';
+                    setTimeout(() => {
+                        button.textContent = '📋 Копировать';
+                    }, 2000);
+                });
+            };
+            block.appendChild(button);
+        });
+        
+        // Плавная прокрутка к якорям
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>
