@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DLE API cURL Examples - Дополнительные поля</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f7fa;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1, h2, h3 {
+            color: #2c3e50;
+            margin-top: 30px;
+        }
+        
+        h1 {
+            text-align: center;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+            margin-bottom: 30px;
+        }
+        
+        h2 {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+        
+        h3 {
+            color: #8e44ad;
+            border-left: 4px solid #9b59b6;
+            padding-left: 10px;
+        }
+        
+        .code-block {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 15px 0;
+            border-left: 4px solid #4299e1;
+            font-family: 'Courier New', Monaco, monospace;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        
+        .json-block {
+            background: #1a202c;
+            color: #68d391;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 10px 0;
+            font-family: 'Courier New', Monaco, monospace;
+            font-size: 13px;
+        }
+        
+        .bash-block {
+            background: #2a2a2a;
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 10px 0;
+            font-family: 'Courier New', Monaco, monospace;
+            font-size: 13px;
+        }
+        
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+            border-left: 4px solid #f39c12;
+        }
+        
+        .info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+            border-left: 4px solid #17a2b8;
+        }
+        
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+            border-left: 4px solid #28a745;
+        }
+        
+        ul {
+            background: #f8f9fa;
+            padding: 15px 20px;
+            border-radius: 5px;
+            border-left: 3px solid #6c757d;
+        }
+        
+        li {
+            margin: 5px 0;
+        }
+        
+        .field-description {
+            background: #e8f4f8;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            border-left: 3px solid #17a2b8;
+        }
+        
+        .copy-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+        
+        .copy-btn:hover {
+            background: #218838;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+        }
+        
+        th, td {
+            border: 1px solid #dee2e6;
+            padding: 12px;
+            text-align: left;
+        }
+        
+        th {
+            background: #f8f9fa;
+            font-weight: bold;
+            color: #495057;
+        }
+        
+        .endpoint {
+            background: #28a745;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 DLE API cURL Examples - Дополнительные поля</h1>
+        
+        <div class="info">
+            <strong>📋 Описание:</strong> Примеры использования cURL для работы с дополнительными полями (xfields) через DLE API на основе предоставленного скриншота.
+        </div>
+
+        <h2>1. Добавление новости с дополнительными полями из скриншота</h2>
+        <p>Пример для игрового контента с полным набором дополнительных полей:</p>
+        
+        <div class="code-block">
+curl -X POST "http://your-site.com/api.php" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "add_news",
+    "api_key": "your_secret_key_here",
+    "title": "Counter-Strike 2 - новая версия легендарного шутера",
+    "short_story": "Valve выпустила долгожданное обновление популярного шутера с улучшенной графикой и новыми возможностями.",
+    "full_story": "Counter-Strike 2 представляет собой крупнейшее техническое обновление в истории CS. Игра построена на движке Source 2, что обеспечивает улучшенную графику, физику и производительность.",
+    "category": 1,
+    "author": "admin",
+    "xfields": {
+      "file_dle": "cs2_setup.exe",
+      "size": "25.6 GB",
+      "name": "Counter-Strike 2",
+      "update": "Обновление 1.3.7.2 от 15.12.2024\nИсправлены критические уязвимости\nДобавлены новые карты\nУлучшена производительность",
+      "telegram": "@cs2_official",
+      "steam-rating-percentage": "92",
+      "steam-rating-title": "Очень положительные",
+      "metacritic_score": "87",
+      "metacritic_score_title": "Очень высокие оценки",
+      "age18": "Нет",
+      "upload_zip_title": "Скачать торрент",
+      "upload_file_version": "Версия 1.3.7.2",
+      "upload_zip": "https://example.com/download/cs2.torrent",
+      "upload_f1": "https://mega.nz/file/cs2_part1",
+      "upload_f2": "https://mega.nz/file/cs2_part2"
+    }
+  }'
+        </div>
+        <button class="copy-btn" onclick="copyToClipboard(this.previousElementSibling.textContent)">📋 Копировать</button>
+
+        <h2>2. Добавление мобильной игры</h2>
+        
+        <div class="code-block">
+curl -X POST "http://your-site.com/api.php" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "add_news",
+    "api_key": "your_secret_key_here",
+    "title": "PUBG Mobile - королевская битва на мобильных устройствах",
+    "short_story": "Популярная мобильная версия PUBG с новыми режимами игры и улучшениями.",
+    "full_story": "PUBG Mobile предлагает полноценный опыт королевской битвы на 100 игроков прямо на вашем мобильном устройстве.",
+    "category": 2,
+    "xfields": {
+      "file_dle": "pubg_mobile.apk",
+      "size": "2.1 GB",
+      "name": "PUBG Mobile",
+      "update": "Обновление 3.0\n- Новая карта Livik 2.0\n- Режим Zombie\n- Улучшенная графика\n- Исправления багов",
+      "telegram": "@pubgmobile_ru",
+      "steam-rating-percentage": "78",
+      "steam-rating-title": "В основном положительные",
+      "metacritic_score": "75",
+      "metacritic_score_title": "Хорошие оценки",
+      "age18": "Да",
+      "upload_zip_title": "Скачать APK + OBB",
+      "upload_file_version": "Версия 3.0.0",
+      "upload_zip": "https://example.com/pubg_mobile_full.zip",
+      "upload_f1": "https://drive.google.com/pubg_apk",
+      "upload_f2": "https://drive.google.com/pubg_obb"
+    }
+  }'
+        </div>
+        <button class="copy-btn" onclick="copyToClipboard(this.previousElementSibling.textContent)">📋 Копировать</button>
+
+        <h2>3. Обновление информации о файле</h2>
+        
+        <div class="code-block">
+curl -X POST "http://your-site.com/api.php" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "update_news",
+    "api_key": "your_secret_key_here",
+    "news_id": 123,
+    "xfields": {
+      "size": "26.1 GB",
+      "update": "Обновление 1.3.8.0 от 20.12.2024\nНовая операция\nИсправлен баг с читерами\nОптимизация производительности\nДобавлена новая карта Mirage 2.0",
+      "upload_file_version": "Версия 1.3.8.0",
+      "steam-rating-percentage": "94",
+      "metacritic_score": "89"
+    }
+  }'
+        </div>
+        <button class="copy-btn" onclick="copyToClipboard(this.previousElementSibling.textContent)">📋 Копировать</button>
+
+        <h2>4. Добавление программного обеспечения</h2>
+        
+        <div class="code-block">
+curl -X POST "http://your-site.com/api.php" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "add_news",
+    "api_key": "your_secret_key_here",
+    "title": "Adobe Photoshop 2024 - профессиональный графический редактор",
+    "short_story": "Новейшая версия Photoshop с ИИ-функциями и улучшенным интерфейсом.",
+    "full_story": "Adobe Photoshop 2024 включает революционные функции искусственного интеллекта, новые инструменты для работы с 3D и улучшенную производительность.",
+    "category": 3,
+    "xfields": {
+      "file_dle": "adobe_photoshop_2024.exe",
+      "size": "4.2 GB",
+      "name": "Adobe Photoshop 2024",
+      "update": "Версия 25.0.0\n- Новые ИИ-функции\n- Улучшенный интерфейс\n- Поддержка новых форматов\n- Оптимизация памяти",
+      "telegram": "@adobe_software",
+      "steam-rating-percentage": "",
+      "steam-rating-title": "",
+      "metacritic_score": "",
+      "metacritic_score_title": "",
+      "age18": "Нет",
+      "upload_zip_title": "Скачать полную версию",
+      "upload_file_version": "Версия 25.0.0 + Crack",
+      "upload_zip": "https://example.com/photoshop2024.zip",
+      "upload_f1": "https://mega.nz/photoshop_installer",
+      "upload_f2": "https://mega.nz/photoshop_crack"
+    }
+  }'
+        </div>
+        <button class="copy-btn" onclick="copyToClipboard(this.previousElementSibling.textContent)">📋 Копировать</button>
+
+        <h2>5. Получение информации с дополнительными полями</h2>
+        
+        <div class="code-block">
+curl -X POST "http://your-site.com/api.php" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "get_news_by_id",
+    "news_id": 123
+  }' | jq '.data.xfields'
+        </div>
+        <button class="copy-btn" onclick="copyToClipboard(this.previousElementSibling.textContent)">📋 Копировать</button>
+
+        <h2>6. Пример ответа с дополнительными полями</h2>
+        <p>При успешном запросе вы получите что-то вроде:</p>
+        
+        <div class="json-block">
+{
+  "success": true,
+  "data": {
+    "id": 123,
+    "title": "Counter-Strike 2",
+    "xfields": {
+      "file_dle": "cs2_setup.exe",
+      "size": "25.6 GB",
+      "name": "Counter-Strike 2",
+      "update": "Обновление 1.3.7.2 от 15.12.2024...",
+      "telegram": "@cs2_official",
+      "steam-rating-percentage": "92",
+      "steam-rating-title": "Очень положительные",
+      "metacritic_score": "87",
+      "metacritic_score_title": "Очень высокие оценки",
+      "age18": "Нет",
+      "upload_zip_title": "Скачать торрент",
+      "upload_file_version": "Версия 1.3.7.2",
+      "upload_zip": "https://example.com/download/cs2.torrent",
+      "upload_f1": "https://mega.nz/file/cs2_part1",
+      "upload_f2": "https://mega.nz/file/cs2_part2"
+    }
+  }
+}
+        </div>
+
+        <h2>7. Bash-скрипт для массового добавления игр</h2>
+        
+        <div class="bash-block">
+#!/bin/bash
+
+API_URL="http://your-site.com/api.php"
+API_KEY="your_secret_key_here"
+
+# Функция добавления игры
+add_game() {
+  local title="$1"
+  local file_name="$2"
+  local size="$3"
+  local version="$4"
+  local rating="$5"
+  
+  curl -X POST "$API_URL" \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"action\": \"add_news\",
+      \"api_key\": \"$API_KEY\",
+      \"title\": \"$title\",
+      \"short_story\": \"Описание игры $title\",
+      \"full_story\": \"Полное описание игры $title с системными требованиями\",
+      \"category\": 1,
+      \"xfields\": {
+        \"file_dle\": \"$file_name\",
+        \"size\": \"$size\",
+        \"name\": \"$title\",
+        \"upload_file_version\": \"$version\",
+        \"steam-rating-percentage\": \"$rating\",
+        \"age18\": \"Нет\"
+      }
+    }"
+}
+
+# Добавление нескольких игр
+add_game "Cyberpunk 2077" "cyberpunk2077.exe" "70.2 GB" "Версия 2.1" "86"
+add_game "The Witcher 3" "witcher3_goty.exe" "35.7 GB" "GOTY Edition" "94"
+add_game "GTA V" "gtav_premium.exe" "94.2 GB" "Premium Edition" "91"
+        </div>
+        <button class="copy-btn" onclick="copyToClipboard(this.previousElementSibling.textContent)">📋 Копировать</button>
+
+        <h2>🔧 Описание полей из скриншота</h2>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>Поле</th>
+                    <th>Описание</th>
+                    <th>Пример значения</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>file_dle</code></td>
+                    <td>Название файла для скачивания</td>
+                    <td>cs2_setup.exe</td>
+                </tr>
+                <tr>
+                    <td><code>size</code></td>
+                    <td>Размер файла</td>
+                    <td>25.6 GB</td>
+                </tr>
+                <tr>
+                    <td><code>name</code></td>
+                    <td>Отображаемое название</td>
+                    <td>Counter-Strike 2</td>
+                </tr>
+                <tr>
+                    <td><code>update</code></td>
+                    <td>Информация об обновлениях (многострочный текст)</td>
+                    <td>Обновление 1.3.7.2\nНовые карты\nИсправления</td>
+                </tr>
+                <tr>
+                    <td><code>telegram</code></td>
+                    <td>Ссылка на Telegram канал</td>
+                    <td>@cs2_official</td>
+                </tr>
+                <tr>
+                    <td><code>steam-rating-percentage</code></td>
+                    <td>Процент положительных отзывов в Steam</td>
+                    <td>92</td>
+                </tr>
+                <tr>
+                    <td><code>steam-rating-title</code></td>
+                    <td>Текстовое описание рейтинга Steam</td>
+                    <td>Очень положительные</td>
+                </tr>
+                <tr>
+                    <td><code>metacritic_score</code></td>
+                    <td>Оценка на Metacritic</td>
+                    <td>87</td>
+                </tr>
+                <tr>
+                    <td><code>metacritic_score_title</code></td>
+                    <td>Описание оценки Metacritic</td>
+                    <td>Очень высокие оценки</td>
+                </tr>
+                <tr>
+                    <td><code>age18</code></td>
+                    <td>Возрастное ограничение 18+ (Да/Нет)</td>
+                    <td>Нет</td>
+                </tr>
+                <tr>
+                    <td><code>upload_zip_title</code></td>
+                    <td>Название для кнопки скачивания</td>
+                    <td>Скачать торрент</td>
+                </tr>
+                <tr>
+                    <td><code>upload_file_version</code></td>
+                    <td>Версия файла</td>
+                    <td>Версия 1.3.7.2</td>
+                </tr>
+                <tr>
+                    <td><code>upload_zip</code></td>
+                    <td>Основная ссылка для скачивания</td>
+                    <td>https://example.com/file.zip</td>
+                </tr>
+                <tr>
+                    <td><code>upload_f1</code></td>
+                    <td>Дополнительная ссылка 1</td>
+                    <td>https://mega.nz/file1</td>
+                </tr>
+                <tr>
+                    <td><code>upload_f2</code></td>
+                    <td>Дополнительная ссылка 2</td>
+                    <td>https://mega.nz/file2</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="warning">
+            <h3>⚠️ Важные замечания:</h3>
+            <ul>
+                <li><strong>Замените</strong> <code>your-site.com</code> на ваш домен</li>
+                <li><strong>Измените</strong> <code>your_secret_key_here</code> в файле api.php и в запросах</li>
+                <li><strong>Проверьте</strong> настройки базы данных в api.php</li>
+                <li><strong>Используйте</strong> правильные ID категорий для вашего сайта</li>
+                <li><strong>Экранируйте</strong> специальные символы в JSON при необходимости</li>
+            </ul>
+        </div>
+
+        <div class="success">
+            <h3>✅ Полезные команды:</h3>
+            <p><strong>Проверка JSON:</strong> <code>echo 'your_json' | jq .</code></p>
+            <p><strong>Красивый вывод:</strong> <code>curl ... | jq .</code></p>
+            <p><strong>Сохранение в файл:</strong> <code>curl ... > response.json</code></p>
+            <p><strong>Отладка запроса:</strong> <code>curl -v ...</code></p>
+        </div>
+
+        <div class="info">
+            <h3>📚 Дополнительная информация:</h3>
+            <p>Все дополнительные поля хранятся в базе данных DLE в формате: <code>поле1|значение1||поле2|значение2</code></p>
+            <p>API автоматически преобразует этот формат в удобный JSON объект при получении и обратно при сохранении.</p>
+        </div>
+    </div>
+
+    <script>
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text.trim()).then(function() {
+                // Показываем уведомление
+                const notification = document.createElement('div');
+                notification.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: #28a745;
+                    color: white;
+                    padding: 10px 20px;
+                    border-radius: 5px;
+                    z-index: 1000;
+                    font-family: Arial, sans-serif;
+                `;
+                notification.textContent = '✅ Скопировано в буфер обмена!';
+                document.body.appendChild(notification);
+                
+                setTimeout(() => {
+                    document.body.removeChild(notification);
+                }, 2000);
+            });
+        }
+
+        // Подсветка синтаксиса для JSON
+        document.addEventListener('DOMContentLoaded', function() {
+            const jsonBlocks = document.querySelectorAll('.json-block');
+            jsonBlocks.forEach(block => {
+                let content = block.textContent;
+                // Простая подсветка для ключей
+                content = content.replace(/"([^"]+)":/g, '<span style="color: #ffd700;">"$1":</span>');
+                // Подсветка для строковых значений
+                content = content.replace(/: "([^"]+)"/g, ': <span style="color: #87ceeb;">"$1"</span>');
+                block.innerHTML = content;
+            });
+        });
+    </script>
+</body>
+</html>
