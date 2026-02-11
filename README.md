@@ -1,7 +1,7 @@
 # 🚀 DLE News API
 
-[![API Version](https://img.shields.io/badge/API%20Version-3.0-blue.svg)](https://github.com/yourusername/dle-api)
-[![PHP Version](https://img.shields.io/badge/PHP-%3E%3D7.4-green.svg)](https://www.php.net/)
+[![API Version](https://img.shields.io/badge/API%20Version-4.0-blue.svg)](https://github.com/yourusername/dle-api)
+[![PHP Version](https://img.shields.io/badge/PHP-%3E%3D8.3-green.svg)](https://www.php.net/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![DLE Compatible](https://img.shields.io/badge/DLE-All%20Versions-orange.svg)](https://dle-news.ru/)
 
