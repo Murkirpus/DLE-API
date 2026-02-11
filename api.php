@@ -2,21 +2,26 @@
 /**
  * Полноценный DLE News API
  * Работает БЕЗ подключения engine/init.php
- * Версия: 3.0 - Full Edition
+ * Версия: 4.0 - DLE 18.1 Compatible
+ * Совместимость: DLE 13.x - 18.1+
  * Функционал: добавление, получение, редактирование, удаление новостей
+ * Поддержка: post_extras, post_extras_cats, tags, xfsearch, cache clearing
  */
 
 // НАСТРОЙКИ - ОБЯЗАТЕЛЬНО ИЗМЕНИТЕ!
-define('API_VERSION', '3.0');
-define('API_SECRET_KEY', 'your_secret_key'); // ЗАМЕНИТЕ НА СВОЙ КЛЮЧ!
+define('API_VERSION', '4.0');
+define('API_SECRET_KEY', 'pass'); // ЗАМЕНИТЕ НА СВОЙ КЛЮЧ!
 define('API_RATE_LIMIT', 100);
 
 // Настройки подключения к БД (заполните своими данными)
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'dj-x');
-define('DB_USER', 'dj-x');
-define('DB_PASS', 'wiNFLr6K4hVm');
+define('DB_NAME', 'dle18');
+define('DB_USER', 'dle18');
+define('DB_PASS', 'dle18');
 define('DB_PREFIX', 'dle_'); // Префикс таблиц DLE
+
+// Путь к корню DLE (для очистки кеша). Оставьте пустым если не нужно
+define('DLE_ROOT', ''); // например: '/var/www/html/mysite'
 
 // Отключаем отображение ошибок в продакшене
 error_reporting(E_ALL);
@@ -29,17 +34,17 @@ class FullDLEAPI {
     private $post_table = null;
     private $category_table = null;
     private $user_table = null;
+    private $dle_version = null;
     
     public function __construct() {
         $this->setHeaders();
         $this->logRequest();
         
-        // Попытка подключения к БД
         $this->connectDatabase();
         
-        // Определение таблиц
         if ($this->db_connected) {
             $this->findTables();
+            $this->detectDLEVersion();
         }
     }
     
@@ -69,12 +74,56 @@ class FullDLEAPI {
     }
     
     /**
+     * Определение версии DLE по структуре БД
+     */
+    private function detectDLEVersion() {
+        if (!$this->db_connected) return;
+        
+        try {
+            $has_extras_cats = $this->tableExists(DB_PREFIX . 'post_extras_cats');
+            $has_xfsearch = $this->tableExists(DB_PREFIX . 'xfsearch');
+            
+            $has_related = false;
+            if ($this->tableExists(DB_PREFIX . 'post_extras')) {
+                $stmt = $this->db->query("DESCRIBE `" . DB_PREFIX . "post_extras`");
+                $cols = array_column($stmt->fetchAll(), 'Field');
+                $has_related = in_array('related_ids', $cols);
+            }
+            
+            $has_metatitle = false;
+            if ($this->post_table) {
+                $stmt = $this->db->query("DESCRIBE `{$this->post_table}`");
+                $cols = array_column($stmt->fetchAll(), 'Field');
+                $has_metatitle = in_array('metatitle', $cols);
+            }
+            
+            if ($has_metatitle && $has_related) {
+                $this->dle_version = '17+';
+            } elseif ($has_xfsearch) {
+                $this->dle_version = '15';
+            } elseif ($has_extras_cats) {
+                $this->dle_version = '13';
+            } else {
+                $this->dle_version = '12';
+            }
+            
+            $this->log("DLE ~{$this->dle_version} (extras_cats:" . ($has_extras_cats ? 'Y' : 'N') . 
+                       " xfsearch:" . ($has_xfsearch ? 'Y' : 'N') . 
+                       " related:" . ($has_related ? 'Y' : 'N') . 
+                       " metatitle:" . ($has_metatitle ? 'Y' : 'N') . ")");
+                       
+        } catch (PDOException $e) {
+            $this->log('Ошибка определения версии DLE: ' . $e->getMessage());
+            $this->dle_version = 'unknown';
+        }
+    }
+    
+    /**
      * Определение названий таблиц
      */
     private function findTables() {
         $possible_prefixes = [DB_PREFIX, 'dle_', 'datalife_', ''];
         
-        // Поиск таблицы постов
         foreach ($possible_prefixes as $prefix) {
             foreach (['post', 'posts', 'news'] as $table_name) {
                 $full_name = $prefix . $table_name;
@@ -85,7 +134,6 @@ class FullDLEAPI {
             }
         }
         
-        // Поиск таблицы категорий
         foreach ($possible_prefixes as $prefix) {
             foreach (['category', 'categories'] as $table_name) {
                 $full_name = $prefix . $table_name;
@@ -96,7 +144,6 @@ class FullDLEAPI {
             }
         }
         
-        // Поиск таблицы пользователей
         foreach ($possible_prefixes as $prefix) {
             foreach (['users', 'user'] as $table_name) {
                 $full_name = $prefix . $table_name;
@@ -107,7 +154,7 @@ class FullDLEAPI {
             }
         }
         
-        $this->log("Найденные таблицы - Посты: {$this->post_table}, Категории: {$this->category_table}, Пользователи: {$this->user_table}");
+        $this->log("Таблицы - Посты: {$this->post_table}, Категории: {$this->category_table}, Юзеры: {$this->user_table}");
     }
     
     /**
@@ -128,20 +175,17 @@ class FullDLEAPI {
      */
     public function handleRequest() {
         try {
-            // Обработка OPTIONS (CORS)
             if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
                 http_response_code(200);
                 exit;
             }
             
-            // Получение данных
             $input = $this->getInputData();
             
             if (!$input) {
                 return $this->sendError('Некорректные данные запроса', 400);
             }
             
-            // Аутентификация (не требуется для получения новостей)
             $action = $input['action'] ?? 'test';
             $read_actions = ['get_news', 'get_news_by_id', 'get_categories', 'search_news', 'test', 'test_connection'];
             
@@ -151,44 +195,23 @@ class FullDLEAPI {
                 }
             }
             
-            // Лимит запросов
             if (!$this->checkRateLimit()) {
                 return $this->sendError('Превышен лимит запросов', 429);
             }
             
-            // Выполнение действия
-            $this->log("Выполняется действие: $action");
+            $this->log("Действие: $action");
             
             switch ($action) {
-                // Управление новостями
-                case 'add_news':
-                    return $this->addNews($input);
-                case 'update_news':
-                    return $this->updateNews($input);
-                case 'delete_news':
-                    return $this->deleteNews($input);
-                case 'get_news_status':
-                    return $this->getNewsStatus($input);
-                
-                // Получение новостей
-                case 'get_news':
-                    return $this->getNews($input);
-                case 'get_news_by_id':
-                    return $this->getNewsById($input);
-                case 'search_news':
-                    return $this->searchNews($input);
-                
-                // Категории
-                case 'get_categories':
-                    return $this->getCategories();
-                case 'add_category':
-                    return $this->addCategory($input);
-                
-                // Статистика
-                case 'get_stats':
-                    return $this->getStats();
-                
-                // Тест
+                case 'add_news':      return $this->addNews($input);
+                case 'update_news':   return $this->updateNews($input);
+                case 'delete_news':   return $this->deleteNews($input);
+                case 'get_news_status': return $this->getNewsStatus($input);
+                case 'get_news':      return $this->getNews($input);
+                case 'get_news_by_id': return $this->getNewsById($input);
+                case 'search_news':   return $this->searchNews($input);
+                case 'get_categories': return $this->getCategories();
+                case 'add_category':  return $this->addCategory($input);
+                case 'get_stats':     return $this->getStats();
                 case 'test':
                 case 'test_connection':
                 default:
@@ -201,9 +224,6 @@ class FullDLEAPI {
         }
     }
     
-    /**
-     * Установка заголовков
-     */
     private function setHeaders() {
         header('Content-Type: application/json; charset=utf-8');
         header('X-API-Version: ' . API_VERSION);
@@ -213,13 +233,9 @@ class FullDLEAPI {
         header('Cache-Control: no-cache, no-store, must-revalidate');
     }
     
-    /**
-     * Получение входных данных
-     */
     private function getInputData() {
         $input = null;
         
-        // POST JSON
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $raw_input = file_get_contents('php://input');
             if (!empty($raw_input)) {
@@ -231,17 +247,14 @@ class FullDLEAPI {
             }
         }
         
-        // POST данные
         if (!$input && !empty($_POST)) {
             $input = $_POST;
         }
         
-        // GET параметры
         if (!$input && !empty($_GET)) {
             $input = $_GET;
         }
         
-        // Тестовые данные по умолчанию
         if (!$input) {
             $input = ['action' => 'test'];
         }
@@ -249,18 +262,14 @@ class FullDLEAPI {
         return $input;
     }
     
-    /**
-     * Аутентификация
-     */
     private function authenticate($input) {
         $api_key = $input['api_key'] ?? '';
         $username = $input['username'] ?? '';
         $password = $input['password'] ?? '';
         
-        // Проверка API ключа
         if (!empty($api_key)) {
             if ($api_key === API_SECRET_KEY) {
-                $this->log('Аутентификация по API ключу успешна');
+                $this->log('Auth OK по API ключу');
                 return true;
             } else {
                 $this->log('Неверный API ключ');
@@ -268,7 +277,6 @@ class FullDLEAPI {
             }
         }
         
-        // Проверка логина/пароля через БД
         if (!empty($username) && !empty($password) && $this->db_connected && $this->user_table) {
             try {
                 $stmt = $this->db->prepare("SELECT user_id, user_group, password FROM `{$this->user_table}` WHERE name = ?");
@@ -276,7 +284,7 @@ class FullDLEAPI {
                 $user = $stmt->fetch();
                 
                 if ($user && password_verify($password, $user['password'])) {
-                    $this->log('Аутентификация через БД успешна для пользователя: ' . $username);
+                    $this->log('Auth OK через БД: ' . $username);
                     return true;
                 }
             } catch (PDOException $e) {
@@ -287,9 +295,6 @@ class FullDLEAPI {
         return false;
     }
     
-    /**
-     * Проверка лимита запросов
-     */
     private function checkRateLimit() {
         $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
         $cache_file = sys_get_temp_dir() . '/dle_api_limit_' . md5($ip) . '.json';
@@ -303,7 +308,6 @@ class FullDLEAPI {
         $current_hour = date('Y-m-d H');
         $limit_data[$current_hour] = ($limit_data[$current_hour] ?? 0) + 1;
         
-        // Очистка старых записей
         foreach ($limit_data as $hour => $count) {
             if ($hour < date('Y-m-d H', strtotime('-1 hour'))) {
                 unset($limit_data[$hour]);
@@ -315,9 +319,10 @@ class FullDLEAPI {
         return $limit_data[$current_hour] <= API_RATE_LIMIT;
     }
     
-    /**
-     * Тест соединения
-     */
+    // ========================================================================
+    // ТЕСТ СОЕДИНЕНИЯ
+    // ========================================================================
+    
     private function testConnection() {
         $response = [
             'api_status' => 'working',
@@ -325,6 +330,7 @@ class FullDLEAPI {
             'timestamp' => time(),
             'datetime' => date('Y-m-d H:i:s'),
             'database_connected' => $this->db_connected,
+            'dle_version' => $this->dle_version ?: 'not detected',
             'tables_found' => [
                 'posts' => $this->post_table,
                 'categories' => $this->category_table,
@@ -334,7 +340,6 @@ class FullDLEAPI {
                 'php_version' => PHP_VERSION,
                 'server_software' => $_SERVER['SERVER_SOFTWARE'] ?? 'unknown',
                 'request_method' => $_SERVER['REQUEST_METHOD'],
-                'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'unknown'
             ],
             'available_actions' => [
                 'add_news', 'update_news', 'delete_news', 'get_news_status',
@@ -344,100 +349,66 @@ class FullDLEAPI {
             ]
         ];
         
+        if ($this->db_connected) {
+            $response['dle_tables'] = [
+                'post_extras' => $this->tableExists(DB_PREFIX . 'post_extras'),
+                'post_extras_cats' => $this->tableExists(DB_PREFIX . 'post_extras_cats'),
+                'tags' => $this->tableExists(DB_PREFIX . 'tags'),
+                'xfsearch' => $this->tableExists(DB_PREFIX . 'xfsearch'),
+            ];
+        }
+        
         if (!$this->db_connected) {
-            $response['note'] = 'БД не подключена. Проверьте настройки подключения в api.php';
+            $response['note'] = 'БД не подключена. Проверьте настройки в api.php';
         }
         
         return $this->sendSuccess($response, 'API работает корректно');
     }
     
-    /**
-     * Получение списка новостей
-     */
+    // ========================================================================
+    // ПОЛУЧЕНИЕ НОВОСТЕЙ
+    // ========================================================================
+    
     private function getNews($data) {
         if (!$this->db_connected || !$this->post_table) {
-            // Тестовые новости
             $news = [
-                [
-                    'id' => 1,
-                    'title' => 'Тестовая новость 1',
-                    'short_story' => 'Краткое описание первой новости...',
-                    'date' => date('Y-m-d H:i:s'),
-                    'category' => 1,
-                    'author' => 'admin',
-                    'views' => 100
-                ],
-                [
-                    'id' => 2,
-                    'title' => 'Тестовая новость 2',
-                    'short_story' => 'Краткое описание второй новости...',
-                    'date' => date('Y-m-d H:i:s', strtotime('-1 hour')),
-                    'category' => 2,
-                    'author' => 'admin',
-                    'views' => 50
-                ]
+                ['id' => 1, 'title' => 'Тестовая новость 1', 'short_story' => 'Краткое описание...', 'date' => date('Y-m-d H:i:s'), 'category' => 1, 'author' => 'admin', 'views' => 100],
+                ['id' => 2, 'title' => 'Тестовая новость 2', 'short_story' => 'Краткое описание...', 'date' => date('Y-m-d H:i:s', strtotime('-1 hour')), 'category' => 2, 'author' => 'admin', 'views' => 50]
             ];
-            
-            return $this->sendSuccess([
-                'news' => $news,
-                'total' => count($news),
-                'test_mode' => true
-            ], 'Тестовые новости (БД не подключена)');
+            return $this->sendSuccess(['news' => $news, 'total' => count($news), 'test_mode' => true], 'Тестовые новости (БД не подключена)');
         }
         
         try {
-            // Параметры запроса
-            $limit = intval($data['limit'] ?? 10);
+            $limit = min(intval($data['limit'] ?? 10), 100);
             $offset = intval($data['offset'] ?? 0);
             $category = intval($data['category'] ?? 0);
             $approved_only = isset($data['approved_only']) ? intval($data['approved_only']) : 1;
             $order_by = $data['order_by'] ?? 'date';
             $order_direction = strtoupper($data['order_direction'] ?? 'DESC');
             
-            // Ограничения
-            $limit = min($limit, 100); // Максимум 100 записей
-            if (!in_array($order_direction, ['ASC', 'DESC'])) {
-                $order_direction = 'DESC';
-            }
+            if (!in_array($order_direction, ['ASC', 'DESC'])) $order_direction = 'DESC';
             
-            // Получение структуры таблицы
-            $structure = $this->db->query("DESCRIBE `{$this->post_table}`");
-            $columns = $structure->fetchAll();
-            $available_fields = array_column($columns, 'Field');
+            $available_fields = $this->getTableFields($this->post_table);
             
-            // Формирование SELECT
             $select_fields = ['id'];
             $field_mapping = [
-                'title' => 'title',
-                'short_story' => ['short_story', 'excerpt'],
-                'full_story' => ['full_story', 'content'],
-                'date' => ['date', 'created_at'],
-                'category' => 'category',
-                'author' => ['autor', 'author'],
-                'views' => ['news_read', 'views'],
-                'comments' => ['comm_num', 'comments_count'],
-                'rating' => 'rating',
-                'approve' => 'approve',
-                'allow_main' => 'allow_main',
-                'alt_name' => 'alt_name'
+                'title' => 'title', 'short_story' => ['short_story', 'excerpt'], 'full_story' => ['full_story', 'content'],
+                'date' => ['date', 'created_at'], 'category' => 'category', 'author' => ['autor', 'author'],
+                'views' => ['news_read', 'views'], 'comments' => ['comm_num', 'comments_count'],
+                'rating' => 'rating', 'approve' => 'approve', 'allow_main' => 'allow_main',
+                'alt_name' => 'alt_name', 'metatitle' => 'metatitle'
             ];
             
             foreach ($field_mapping as $alias => $field_variants) {
                 if (is_array($field_variants)) {
                     foreach ($field_variants as $variant) {
-                        if (in_array($variant, $available_fields)) {
-                            $select_fields[] = "$variant as $alias";
-                            break;
-                        }
+                        if (in_array($variant, $available_fields)) { $select_fields[] = "$variant as $alias"; break; }
                     }
                 } else {
-                    if (in_array($field_variants, $available_fields)) {
-                        $select_fields[] = $field_variants;
-                    }
+                    if (in_array($field_variants, $available_fields)) $select_fields[] = $field_variants;
                 }
             }
             
-            // WHERE условия
             $where_conditions = [];
             $bindings = [];
             
@@ -453,54 +424,26 @@ class FullDLEAPI {
             
             $where_clause = !empty($where_conditions) ? 'WHERE ' . implode(' AND ', $where_conditions) : '';
             
-            // ORDER BY
             $valid_order_fields = ['id', 'date', 'created_at', 'title', 'news_read', 'views', 'rating'];
-            if (!in_array($order_by, $valid_order_fields) || !in_array($order_by, $available_fields)) {
-                $order_by = 'id';
-            }
+            if (!in_array($order_by, $valid_order_fields) || !in_array($order_by, $available_fields)) $order_by = 'id';
             
-            // Запрос на получение новостей
-            $sql = "SELECT " . implode(', ', $select_fields) . " 
-                   FROM `{$this->post_table}` 
-                   $where_clause 
-                   ORDER BY $order_by $order_direction 
-                   LIMIT $limit OFFSET $offset";
-            
+            $sql = "SELECT " . implode(', ', $select_fields) . " FROM `{$this->post_table}` $where_clause ORDER BY $order_by $order_direction LIMIT $limit OFFSET $offset";
             $stmt = $this->db->prepare($sql);
             $stmt->execute($bindings);
             $news = $stmt->fetchAll();
             
-            // Запрос на получение общего количества
             $count_sql = "SELECT COUNT(*) as total FROM `{$this->post_table}` $where_clause";
             $count_stmt = $this->db->prepare($count_sql);
             $count_stmt->execute($bindings);
             $total = $count_stmt->fetch()['total'];
             
-            // Обработка результатов
             foreach ($news as &$item) {
-                // Добавляем URL новости
-                if (isset($item['alt_name']) && $item['alt_name']) {
-                    $item['url'] = $this->getNewsUrl($item['id'], $item['alt_name']);
-                }
-                
-                // Обрезаем длинные тексты для списка
-                if (isset($item['short_story']) && strlen($item['short_story']) > 300) {
-                    $item['short_story'] = mb_substr($item['short_story'], 0, 300, 'UTF-8') . '...';
-                }
-                
-                // Удаляем full_story из списка (оставляем только для детального просмотра)
+                if (isset($item['alt_name']) && $item['alt_name']) $item['url'] = $this->getNewsUrl($item['id'], $item['alt_name']);
+                if (isset($item['short_story']) && strlen($item['short_story']) > 300) $item['short_story'] = mb_substr($item['short_story'], 0, 300, 'UTF-8') . '...';
                 unset($item['full_story']);
             }
             
-            $this->log("Получено новостей: " . count($news) . " из $total");
-            
-            return $this->sendSuccess([
-                'news' => $news,
-                'total' => intval($total),
-                'limit' => $limit,
-                'offset' => $offset,
-                'has_more' => ($offset + $limit) < $total
-            ]);
+            return $this->sendSuccess(['news' => $news, 'total' => intval($total), 'limit' => $limit, 'offset' => $offset, 'has_more' => ($offset + $limit) < $total]);
             
         } catch (PDOException $e) {
             $this->log('Ошибка получения новостей: ' . $e->getMessage());
@@ -508,65 +451,34 @@ class FullDLEAPI {
         }
     }
     
-    /**
-     * Получение новости по ID
-     */
     private function getNewsById($data) {
         $news_id = intval($data['news_id'] ?? $data['id'] ?? 0);
-        
-        if (!$news_id) {
-            return $this->sendError('ID новости не указан', 400);
-        }
+        if (!$news_id) return $this->sendError('ID новости не указан', 400);
         
         if (!$this->db_connected || !$this->post_table) {
-            return $this->sendSuccess([
-                'id' => $news_id,
-                'title' => 'Тестовая новость #' . $news_id,
-                'short_story' => 'Краткое описание тестовой новости...',
-                'full_story' => 'Полный текст тестовой новости. Здесь был бы полный контент новости.',
-                'date' => date('Y-m-d H:i:s'),
-                'test_mode' => true
-            ]);
+            return $this->sendSuccess(['id' => $news_id, 'title' => 'Тестовая новость #' . $news_id, 'short_story' => 'Тест...', 'full_story' => 'Тест...', 'date' => date('Y-m-d H:i:s'), 'test_mode' => true]);
         }
         
         try {
-            // Получение структуры таблицы
-            $structure = $this->db->query("DESCRIBE `{$this->post_table}`");
-            $columns = $structure->fetchAll();
-            $available_fields = array_column($columns, 'Field');
+            $available_fields = $this->getTableFields($this->post_table);
             
-            // Формирование SELECT с маппингом полей
             $select_fields = ['id'];
             $field_mapping = [
-                'title' => 'title',
-                'short_story' => ['short_story', 'excerpt'],
-                'full_story' => ['full_story', 'content'],
-                'date' => ['date', 'created_at'],
-                'category' => 'category',
-                'author' => ['autor', 'author'],
-                'views' => ['news_read', 'views'],
-                'comments' => ['comm_num', 'comments_count'],
-                'rating' => 'rating',
-                'approve' => 'approve',
-                'allow_main' => 'allow_main',
-                'alt_name' => 'alt_name',
-                'keywords' => 'keywords',
-                'description' => 'descr',
-                'xfields' => 'xfields'
+                'title' => 'title', 'short_story' => ['short_story', 'excerpt'], 'full_story' => ['full_story', 'content'],
+                'date' => ['date', 'created_at'], 'category' => 'category', 'author' => ['autor', 'author'],
+                'views' => ['news_read', 'views'], 'comments' => ['comm_num', 'comments_count'],
+                'rating' => 'rating', 'approve' => 'approve', 'allow_main' => 'allow_main',
+                'alt_name' => 'alt_name', 'keywords' => 'keywords', 'description' => 'descr',
+                'metatitle' => 'metatitle', 'xfields' => 'xfields'
             ];
             
             foreach ($field_mapping as $alias => $field_variants) {
                 if (is_array($field_variants)) {
                     foreach ($field_variants as $variant) {
-                        if (in_array($variant, $available_fields)) {
-                            $select_fields[] = "$variant as $alias";
-                            break;
-                        }
+                        if (in_array($variant, $available_fields)) { $select_fields[] = "$variant as $alias"; break; }
                     }
                 } else {
-                    if (in_array($field_variants, $available_fields)) {
-                        $select_fields[] = $field_variants;
-                    }
+                    if (in_array($field_variants, $available_fields)) $select_fields[] = $field_variants;
                 }
             }
             
@@ -575,11 +487,8 @@ class FullDLEAPI {
             $stmt->execute([$news_id]);
             $news = $stmt->fetch();
             
-            if (!$news) {
-                return $this->sendError('Новость не найдена', 404);
-            }
+            if (!$news) return $this->sendError('Новость не найдена', 404);
             
-            // Обработка дополнительных полей
             if (isset($news['xfields']) && $news['xfields']) {
                 $xfields = [];
                 $pairs = explode('||', $news['xfields']);
@@ -592,12 +501,8 @@ class FullDLEAPI {
                 $news['xfields'] = $xfields;
             }
             
-            // Добавляем URL
-            if (isset($news['alt_name']) && $news['alt_name']) {
-                $news['url'] = $this->getNewsUrl($news['id'], $news['alt_name']);
-            }
+            if (isset($news['alt_name']) && $news['alt_name']) $news['url'] = $this->getNewsUrl($news['id'], $news['alt_name']);
             
-            // Увеличиваем счетчик просмотров
             $this->incrementViews($news_id);
             
             return $this->sendSuccess($news);
@@ -608,104 +513,59 @@ class FullDLEAPI {
         }
     }
     
-    /**
-     * Поиск новостей
-     */
     private function searchNews($data) {
         $query = trim($data['query'] ?? '');
-        
-        if (empty($query)) {
-            return $this->sendError('Поисковый запрос не указан', 400);
-        }
+        if (empty($query)) return $this->sendError('Поисковый запрос не указан', 400);
         
         if (!$this->db_connected || !$this->post_table) {
-            return $this->sendSuccess([
-                'news' => [],
-                'total' => 0,
-                'query' => $query,
-                'test_mode' => true
-            ], 'Поиск недоступен (БД не подключена)');
+            return $this->sendSuccess(['news' => [], 'total' => 0, 'query' => $query, 'test_mode' => true], 'Поиск недоступен (БД не подключена)');
         }
         
         try {
-            $limit = intval($data['limit'] ?? 10);
+            $limit = min(intval($data['limit'] ?? 10), 100);
             $offset = intval($data['offset'] ?? 0);
-            $limit = min($limit, 100);
             
-            // Получение структуры таблицы
-            $structure = $this->db->query("DESCRIBE `{$this->post_table}`");
-            $columns = $structure->fetchAll();
-            $available_fields = array_column($columns, 'Field');
+            $available_fields = $this->getTableFields($this->post_table);
             
-            // Поля для поиска
             $search_fields = [];
             if (in_array('title', $available_fields)) $search_fields[] = 'title';
             if (in_array('short_story', $available_fields)) $search_fields[] = 'short_story';
             if (in_array('full_story', $available_fields)) $search_fields[] = 'full_story';
             if (in_array('keywords', $available_fields)) $search_fields[] = 'keywords';
             
-            if (empty($search_fields)) {
-                return $this->sendError('Поиск недоступен - нет подходящих полей', 500);
-            }
+            if (empty($search_fields)) return $this->sendError('Поиск недоступен', 500);
             
-            // Формирование WHERE для поиска
             $search_conditions = [];
             $bindings = [];
-            
             foreach ($search_fields as $field) {
                 $search_conditions[] = "$field LIKE ?";
                 $bindings[] = "%$query%";
             }
             
             $where_clause = '(' . implode(' OR ', $search_conditions) . ')';
+            if (in_array('approve', $available_fields)) { $where_clause .= ' AND approve = ?'; $bindings[] = 1; }
             
-            // Добавляем условие для одобренных новостей
-            if (in_array('approve', $available_fields)) {
-                $where_clause .= ' AND approve = ?';
-                $bindings[] = 1;
-            }
-            
-            // SELECT поля
             $select_fields = ['id', 'title'];
             if (in_array('short_story', $available_fields)) $select_fields[] = 'short_story';
             if (in_array('date', $available_fields)) $select_fields[] = 'date';
             if (in_array('alt_name', $available_fields)) $select_fields[] = 'alt_name';
             
-            $sql = "SELECT " . implode(', ', $select_fields) . " 
-                   FROM `{$this->post_table}` 
-                   WHERE $where_clause 
-                   ORDER BY id DESC 
-                   LIMIT $limit OFFSET $offset";
-            
+            $sql = "SELECT " . implode(', ', $select_fields) . " FROM `{$this->post_table}` WHERE $where_clause ORDER BY id DESC LIMIT $limit OFFSET $offset";
             $stmt = $this->db->prepare($sql);
             $stmt->execute($bindings);
             $news = $stmt->fetchAll();
             
-            // Подсчет общего количества
             $count_sql = "SELECT COUNT(*) as total FROM `{$this->post_table}` WHERE $where_clause";
             $count_stmt = $this->db->prepare($count_sql);
             $count_stmt->execute($bindings);
             $total = $count_stmt->fetch()['total'];
             
-            // Добавляем URL к результатам
             foreach ($news as &$item) {
-                if (isset($item['alt_name']) && $item['alt_name']) {
-                    $item['url'] = $this->getNewsUrl($item['id'], $item['alt_name']);
-                }
-                
-                // Обрезаем текст для поиска
-                if (isset($item['short_story']) && strlen($item['short_story']) > 200) {
-                    $item['short_story'] = mb_substr($item['short_story'], 0, 200, 'UTF-8') . '...';
-                }
+                if (isset($item['alt_name']) && $item['alt_name']) $item['url'] = $this->getNewsUrl($item['id'], $item['alt_name']);
+                if (isset($item['short_story']) && strlen($item['short_story']) > 200) $item['short_story'] = mb_substr($item['short_story'], 0, 200, 'UTF-8') . '...';
             }
             
-            return $this->sendSuccess([
-                'news' => $news,
-                'total' => intval($total),
-                'query' => $query,
-                'limit' => $limit,
-                'offset' => $offset
-            ]);
+            return $this->sendSuccess(['news' => $news, 'total' => intval($total), 'query' => $query, 'limit' => $limit, 'offset' => $offset]);
             
         } catch (PDOException $e) {
             $this->log('Ошибка поиска: ' . $e->getMessage());
@@ -713,104 +573,55 @@ class FullDLEAPI {
         }
     }
     
-    /**
-     * Увеличение счетчика просмотров
-     */
     private function incrementViews($news_id) {
-        if (!$this->db_connected || !$this->post_table) {
-            return;
-        }
-        
+        if (!$this->db_connected || !$this->post_table) return;
         try {
-            $structure = $this->db->query("DESCRIBE `{$this->post_table}`");
-            $columns = $structure->fetchAll();
-            $available_fields = array_column($columns, 'Field');
-            
-            $views_field = null;
-            if (in_array('news_read', $available_fields)) {
-                $views_field = 'news_read';
-            } elseif (in_array('views', $available_fields)) {
-                $views_field = 'views';
-            }
-            
+            $available_fields = $this->getTableFields($this->post_table);
+            $views_field = in_array('news_read', $available_fields) ? 'news_read' : (in_array('views', $available_fields) ? 'views' : null);
             if ($views_field) {
-                $sql = "UPDATE `{$this->post_table}` SET $views_field = $views_field + 1 WHERE id = ?";
-                $stmt = $this->db->prepare($sql);
-                $stmt->execute([$news_id]);
+                $this->db->prepare("UPDATE `{$this->post_table}` SET $views_field = $views_field + 1 WHERE id = ?")->execute([$news_id]);
             }
-            
         } catch (PDOException $e) {
-            $this->log('Ошибка увеличения счетчика просмотров: ' . $e->getMessage());
+            $this->log('Ошибка просмотров: ' . $e->getMessage());
         }
     }
     
-    /**
-     * Получение категорий
-     */
+    // ========================================================================
+    // КАТЕГОРИИ
+    // ========================================================================
+    
     private function getCategories() {
         if (!$this->db_connected || !$this->category_table) {
-            // Тестовые категории
             $categories = [
                 ['id' => 1, 'name' => 'Основная', 'alt_name' => 'main'],
                 ['id' => 2, 'name' => 'Новости', 'alt_name' => 'news'],
                 ['id' => 3, 'name' => 'Статьи', 'alt_name' => 'articles'],
-                ['id' => 4, 'name' => 'Технологии', 'alt_name' => 'tech']
             ];
-            
-            return $this->sendSuccess(['categories' => $categories], 'Тестовые категории (БД не подключена)');
+            return $this->sendSuccess(['categories' => $categories], 'Тестовые категории');
         }
         
         try {
-            // Получение структуры таблицы
-            $structure = $this->db->query("DESCRIBE `{$this->category_table}`");
-            $columns = $structure->fetchAll();
-            $available_fields = array_column($columns, 'Field');
+            $available_fields = $this->getTableFields($this->category_table);
             
-            $this->log("Доступные поля категорий: " . implode(', ', $available_fields));
-            
-            // Формирование SELECT
             $select_fields = [];
+            if (in_array('id', $available_fields)) $select_fields[] = 'id';
+            if (in_array('name', $available_fields)) $select_fields[] = 'name';
+            elseif (in_array('category', $available_fields)) $select_fields[] = 'category as name';
+            if (in_array('alt_name', $available_fields)) $select_fields[] = 'alt_name';
+            elseif (in_array('alt', $available_fields)) $select_fields[] = 'alt as alt_name';
+            if (in_array('descr', $available_fields)) $select_fields[] = 'descr as description';
+            if (in_array('sort', $available_fields)) $select_fields[] = 'sort';
             
-            if (in_array('id', $available_fields)) {
-                $select_fields[] = 'id';
-            }
-            if (in_array('name', $available_fields)) {
-                $select_fields[] = 'name';
-            } elseif (in_array('category', $available_fields)) {
-                $select_fields[] = 'category as name';
-            }
-            if (in_array('alt_name', $available_fields)) {
-                $select_fields[] = 'alt_name';
-            } elseif (in_array('alt', $available_fields)) {
-                $select_fields[] = 'alt as alt_name';
-            }
-            if (in_array('descr', $available_fields)) {
-                $select_fields[] = 'descr as description';
-            }
-            if (in_array('sort', $available_fields)) {
-                $select_fields[] = 'sort';
-            }
+            if (empty($select_fields)) return $this->sendError('Некорректная структура таблицы категорий', 500);
             
-            if (empty($select_fields)) {
-                return $this->sendError('Некорректная структура таблицы категорий', 500);
-            }
-            
-            // ORDER BY
-            $order_by = 'id';
-            if (in_array('sort', $available_fields)) {
-                $order_by = 'sort';
-            } elseif (in_array('position', $available_fields)) {
-                $order_by = 'position';
-            }
+            $order_by = in_array('sort', $available_fields) ? 'sort' : (in_array('position', $available_fields) ? 'position' : 'id');
             
             $sql = "SELECT " . implode(', ', $select_fields) . " FROM `{$this->category_table}` ORDER BY $order_by";
-            $stmt = $this->db->query($sql);
-            $categories = $stmt->fetchAll();
+            $categories = $this->db->query($sql)->fetchAll();
             
-            // Нормализация данных
-            $normalized_categories = [];
+            $normalized = [];
             foreach ($categories as $cat) {
-                $normalized_categories[] = [
+                $normalized[] = [
                     'id' => $cat['id'] ?? 0,
                     'name' => $cat['name'] ?? 'Без названия',
                     'alt_name' => $cat['alt_name'] ?? 'no-name',
@@ -819,31 +630,19 @@ class FullDLEAPI {
                 ];
             }
             
-            return $this->sendSuccess(['categories' => $normalized_categories]);
+            return $this->sendSuccess(['categories' => $normalized]);
             
         } catch (PDOException $e) {
-            $this->log('Ошибка получения категорий: ' . $e->getMessage());
+            $this->log('Ошибка категорий: ' . $e->getMessage());
             return $this->sendError('Ошибка базы данных', 500);
         }
     }
     
-    /**
-     * Добавление категории
-     */
     private function addCategory($data) {
-        $required = ['name'];
-        foreach ($required as $field) {
-            if (empty($data[$field])) {
-                return $this->sendError("Поле '$field' обязательно", 400);
-            }
-        }
+        if (empty($data['name'])) return $this->sendError("Поле 'name' обязательно", 400);
         
         if (!$this->db_connected || !$this->category_table) {
-            return $this->sendSuccess([
-                'category_id' => rand(100, 999),
-                'name' => $data['name'],
-                'test_mode' => true
-            ], 'Тестовое добавление категории');
+            return $this->sendSuccess(['category_id' => rand(100, 999), 'name' => $data['name'], 'test_mode' => true], 'Тестовое добавление категории');
         }
         
         try {
@@ -852,56 +651,21 @@ class FullDLEAPI {
             $description = $data['description'] ?? '';
             $sort = intval($data['sort'] ?? 0);
             
-            // Получение структуры таблицы
-            $structure = $this->db->query("DESCRIBE `{$this->category_table}`");
-            $columns = $structure->fetchAll();
-            $available_fields = array_column($columns, 'Field');
+            $available_fields = $this->getTableFields($this->category_table);
             
-            // Формирование INSERT
-            $fields = [];
-            $values = [];
-            $bindings = [];
+            $fields = []; $values = []; $bindings = [];
             
-            if (in_array('name', $available_fields)) {
-                $fields[] = 'name';
-                $values[] = ':name';
-                $bindings[':name'] = $name;
-            }
+            if (in_array('name', $available_fields)) { $fields[] = 'name'; $values[] = ':name'; $bindings[':name'] = $name; }
+            if (in_array('alt_name', $available_fields)) { $fields[] = 'alt_name'; $values[] = ':alt_name'; $bindings[':alt_name'] = $alt_name; }
+            if (in_array('descr', $available_fields)) { $fields[] = 'descr'; $values[] = ':description'; $bindings[':description'] = $description; }
+            if (in_array('sort', $available_fields)) { $fields[] = 'sort'; $values[] = ':sort'; $bindings[':sort'] = $sort; }
             
-            if (in_array('alt_name', $available_fields)) {
-                $fields[] = 'alt_name';
-                $values[] = ':alt_name';
-                $bindings[':alt_name'] = $alt_name;
-            }
-            
-            if (in_array('descr', $available_fields)) {
-                $fields[] = 'descr';
-                $values[] = ':description';
-                $bindings[':description'] = $description;
-            }
-            
-            if (in_array('sort', $available_fields)) {
-                $fields[] = 'sort';
-                $values[] = ':sort';
-                $bindings[':sort'] = $sort;
-            }
-            
-            if (empty($fields)) {
-                return $this->sendError('Не найдены подходящие поля для добавления категории', 500);
-            }
+            if (empty($fields)) return $this->sendError('Нет подходящих полей', 500);
             
             $sql = "INSERT INTO `{$this->category_table}` (" . implode(', ', $fields) . ") VALUES (" . implode(', ', $values) . ")";
+            $this->db->prepare($sql)->execute($bindings);
             
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute($bindings);
-            
-            $category_id = $this->db->lastInsertId();
-            
-            return $this->sendSuccess([
-                'category_id' => $category_id,
-                'name' => $name,
-                'alt_name' => $alt_name
-            ], 'Категория успешно добавлена');
+            return $this->sendSuccess(['category_id' => $this->db->lastInsertId(), 'name' => $name, 'alt_name' => $alt_name], 'Категория добавлена');
             
         } catch (PDOException $e) {
             $this->log('Ошибка добавления категории: ' . $e->getMessage());
@@ -909,95 +673,53 @@ class FullDLEAPI {
         }
     }
     
-    /**
-     * Добавление новости
-     */
+    // ========================================================================
+    // ДОБАВЛЕНИЕ НОВОСТИ (с rebuild для DLE 18.1)
+    // ========================================================================
+    
     private function addNews($data) {
-        // Валидация
         $required = ['title', 'short_story', 'full_story'];
         foreach ($required as $field) {
-            if (empty($data[$field])) {
-                return $this->sendError("Поле '$field' обязательно", 400);
-            }
+            if (empty($data[$field])) return $this->sendError("Поле '$field' обязательно", 400);
         }
         
         if (!$this->db_connected || !$this->post_table) {
-            $fake_id = rand(1000, 9999);
-            return $this->sendSuccess([
-                'news_id' => $fake_id,
-                'title' => $data['title'],
-                'test_mode' => true
-            ], 'Тестовое добавление (БД не подключена)');
+            return $this->sendSuccess(['news_id' => rand(1000, 9999), 'title' => $data['title'], 'test_mode' => true], 'Тестовое добавление');
         }
         
         try {
-            // Получение структуры таблицы
-            $structure = $this->db->query("DESCRIBE `{$this->post_table}`");
-            $columns = $structure->fetchAll();
-            $available_fields = array_column($columns, 'Field');
+            $available_fields = $this->getTableFields($this->post_table);
             
-            // Подготовка данных
             $title = $data['title'];
             $short_story = $data['short_story'];
             $full_story = $data['full_story'];
-            $category = intval($data['category'] ?? 1);
+            $category = $data['category'] ?? '1';
             $author = $data['author'] ?? 'admin';
             $date = date('Y-m-d H:i:s');
             $alt_name = $data['alt_name'] ?? $this->createAltName($title);
             
-            // Формирование INSERT
-            $fields = [];
-            $values = [];
-            $bindings = [];
+            $fields = []; $values = []; $bindings = [];
             
-            // Обязательные поля
-            if (in_array('title', $available_fields)) {
-                $fields[] = 'title';
-                $values[] = ':title';
-                $bindings[':title'] = $title;
+            // Основные поля
+            $core_fields = [
+                'title' => $title, 'short_story' => $short_story, 'full_story' => $full_story,
+                'date' => $date, 'category' => $category, 'alt_name' => $alt_name
+            ];
+            
+            foreach ($core_fields as $f => $v) {
+                if (in_array($f, $available_fields)) {
+                    $fields[] = $f; $values[] = ":$f"; $bindings[":$f"] = $v;
+                }
             }
             
-            if (in_array('short_story', $available_fields)) {
-                $fields[] = 'short_story';
-                $values[] = ':short_story';
-                $bindings[':short_story'] = $short_story;
-            }
-            
-            if (in_array('full_story', $available_fields)) {
-                $fields[] = 'full_story';
-                $values[] = ':full_story';
-                $bindings[':full_story'] = $full_story;
-            }
-            
-            if (in_array('date', $available_fields)) {
-                $fields[] = 'date';
-                $values[] = ':date';
-                $bindings[':date'] = $date;
-            }
-            
+            // Поле автора (autor в DLE, не author)
             if (in_array('autor', $available_fields)) {
-                $fields[] = 'autor';
-                $values[] = ':author';
-                $bindings[':author'] = $author;
+                $fields[] = 'autor'; $values[] = ':author'; $bindings[':author'] = $author;
             } elseif (in_array('author', $available_fields)) {
-                $fields[] = 'author';
-                $values[] = ':author';
-                $bindings[':author'] = $author;
+                $fields[] = 'author'; $values[] = ':author'; $bindings[':author'] = $author;
             }
             
-            if (in_array('category', $available_fields)) {
-                $fields[] = 'category';
-                $values[] = ':category';
-                $bindings[':category'] = $category;
-            }
-            
-            if (in_array('alt_name', $available_fields)) {
-                $fields[] = 'alt_name';
-                $values[] = ':alt_name';
-                $bindings[':alt_name'] = $alt_name;
-            }
-            
-            // Дополнительные поля
+            // Опциональные поля
             $optional_fields = [
                 'approve' => intval($data['approve'] ?? 1),
                 'allow_comm' => intval($data['allow_comments'] ?? 1),
@@ -1006,245 +728,458 @@ class FullDLEAPI {
                 'fixed' => intval($data['fixed'] ?? 0),
                 'keywords' => $data['keywords'] ?? '',
                 'descr' => $data['description'] ?? '',
-                'comm_num' => 0,
-                'rating' => 0,
-                'vote_num' => 0,
-                'news_read' => 0,
-                'user_id' => intval($data['user_id'] ?? 1)
+                'metatitle' => $data['metatitle'] ?? '',
+                'tags' => $data['tags'] ?? '',
+                'comm_num' => 0, 'rating' => 0, 'vote_num' => 0, 'news_read' => 0,
+                'user_id' => intval($data['user_id'] ?? 1),
+                // Поля DLE без DEFAULT значений
+                'editdate' => '', 'editor' => '', 'reason' => '',
+                'view_edit' => 0, 'allow_br' => 1, 'break_archive' => 0,
+                'symbol' => '', 'flag' => 0,
+                'images' => '', 'files' => '',
+                'groession' => '', 'access' => '',
+                'editreason' => '',
             ];
             
-            foreach ($optional_fields as $field => $value) {
-                if (in_array($field, $available_fields)) {
-                    $fields[] = $field;
-                    $values[] = ":$field";
-                    $bindings[":$field"] = $value;
+            foreach ($optional_fields as $f => $v) {
+                if (in_array($f, $available_fields)) {
+                    $fields[] = $f; $values[] = ":$f"; $bindings[":$f"] = $v;
                 }
             }
             
-            // Дополнительные поля (xfields)
-            if (in_array('xfields', $available_fields) && !empty($data['xfields'])) {
-                $xf_array = [];
-                foreach ($data['xfields'] as $field => $value) {
-                    $xf_array[] = $field . '|' . $value;
+            // xfields (поле обязательное в DLE, не имеет DEFAULT)
+            if (in_array('xfields', $available_fields)) {
+                $xf_value = '';
+                if (!empty($data['xfields']) && is_array($data['xfields'])) {
+                    $xf_array = [];
+                    foreach ($data['xfields'] as $f => $v) { $xf_array[] = "$f|$v"; }
+                    $xf_value = implode('||', $xf_array);
                 }
-                $fields[] = 'xfields';
-                $values[] = ':xfields';
-                $bindings[':xfields'] = implode('||', $xf_array);
+                $fields[] = 'xfields'; $values[] = ':xfields'; $bindings[':xfields'] = $xf_value;
             }
             
             $sql = "INSERT INTO `{$this->post_table}` (" . implode(', ', $fields) . ") VALUES (" . implode(', ', $values) . ")";
-            
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute($bindings);
-            
+            $this->db->prepare($sql)->execute($bindings);
             $news_id = $this->db->lastInsertId();
             
             if ($news_id) {
-                $response = [
-                    'news_id' => $news_id,
-                    'title' => $title,
-                    'alt_name' => $alt_name,
-                    'url' => $this->getNewsUrl($news_id, $alt_name),
-                    'table_used' => $this->post_table,
-                    'fields_used' => count($fields)
-                ];
+                // REBUILD: критически важно для отображения на главной
+                $rebuild_ok = $this->rebuildNewsEntry($news_id, $title, $short_story, $full_story);
                 
-                return $this->sendSuccess($response, 'Новость успешно добавлена');
-            } else {
-                return $this->sendError('Не удалось получить ID новой записи', 500);
+                // Теги
+                if (!empty($data['tags'])) $this->updateNewsTags($news_id, $data['tags']);
+                
+                // Индекс xfsearch
+                if (!empty($data['xfields'])) $this->updateXfSearch($news_id, $data['xfields']);
+                
+                // Очистка кеша
+                $this->clearDLECache();
+                
+                return $this->sendSuccess([
+                    'news_id' => $news_id, 'title' => $title, 'alt_name' => $alt_name,
+                    'url' => $this->getNewsUrl($news_id, $alt_name),
+                    'table_used' => $this->post_table, 'fields_used' => count($fields),
+                    'rebuild' => $rebuild_ok ? 'ok' : 'failed'
+                ], 'Новость успешно добавлена');
             }
+            
+            return $this->sendError('Не удалось получить ID записи', 500);
             
         } catch (PDOException $e) {
             $this->log('Ошибка добавления новости: ' . $e->getMessage());
-            return $this->sendError('Ошибка базы данных: ' . $e->getMessage(), 500);
+            return $this->sendError('Ошибка БД: ' . $e->getMessage(), 500);
         }
     }
     
-    /**
-     * Обновление новости
-     */
+    // ========================================================================
+    // ОБНОВЛЕНИЕ НОВОСТИ (с rebuild для DLE 18.1)
+    // ========================================================================
+    
     private function updateNews($data) {
         $news_id = intval($data['news_id'] ?? $data['id'] ?? 0);
-        
-        if (!$news_id) {
-            return $this->sendError('ID новости не указан', 400);
-        }
+        if (!$news_id) return $this->sendError('ID новости не указан', 400);
         
         if (!$this->db_connected || !$this->post_table) {
-            return $this->sendSuccess([
-                'news_id' => $news_id,
-                'updated_fields' => array_keys($data),
-                'test_mode' => true
-            ], 'Тестовое обновление');
+            return $this->sendSuccess(['news_id' => $news_id, 'updated_fields' => array_keys($data), 'test_mode' => true], 'Тестовое обновление');
         }
         
         try {
-            // Проверяем существование новости
-            $check_stmt = $this->db->prepare("SELECT id FROM `{$this->post_table}` WHERE id = ?");
+            // Получаем текущие данные для rebuild
+            $check_stmt = $this->db->prepare("SELECT id, title, short_story, full_story FROM `{$this->post_table}` WHERE id = ?");
             $check_stmt->execute([$news_id]);
+            $existing = $check_stmt->fetch();
+            if (!$existing) return $this->sendError('Новость не найдена', 404);
             
-            if (!$check_stmt->fetch()) {
-                return $this->sendError('Новость не найдена', 404);
-            }
+            $available_fields = $this->getTableFields($this->post_table);
             
-            // Получение структуры таблицы
-            $structure = $this->db->query("DESCRIBE `{$this->post_table}`");
-            $columns = $structure->fetchAll();
-            $available_fields = array_column($columns, 'Field');
-            
-            // Поля для обновления
-            $update_fields = [];
-            $bindings = [];
+            $update_fields = []; $bindings = [];
             
             $field_mapping = [
-                'title' => 'title',
-                'short_story' => 'short_story',
-                'full_story' => 'full_story',
-                'category' => 'category',
-                'author' => ['autor', 'author'],
-                'keywords' => 'keywords',
-                'description' => 'descr',
-                'approve' => 'approve',
-                'allow_comments' => 'allow_comm',
-                'allow_main' => 'allow_main',
-                'allow_rating' => 'allow_rate',
-                'fixed' => 'fixed'
+                'title' => 'title', 'short_story' => 'short_story', 'full_story' => 'full_story',
+                'category' => 'category', 'author' => ['autor', 'author'],
+                'keywords' => 'keywords', 'description' => 'descr', 'metatitle' => 'metatitle',
+                'approve' => 'approve', 'allow_comments' => 'allow_comm',
+                'allow_main' => 'allow_main', 'allow_rating' => 'allow_rate',
+                'fixed' => 'fixed', 'tags' => 'tags'
             ];
             
             foreach ($field_mapping as $input_key => $db_field) {
-                if (isset($data[$input_key])) {
-                    if (is_array($db_field)) {
-                        foreach ($db_field as $field_variant) {
-                            if (in_array($field_variant, $available_fields)) {
-                                $update_fields[] = "$field_variant = :$input_key";
-                                $bindings[":$input_key"] = $data[$input_key];
-                                break;
-                            }
+                if (!isset($data[$input_key])) continue;
+                if (is_array($db_field)) {
+                    foreach ($db_field as $variant) {
+                        if (in_array($variant, $available_fields)) {
+                            $update_fields[] = "$variant = :$input_key"; $bindings[":$input_key"] = $data[$input_key]; break;
                         }
-                    } else {
-                        if (in_array($db_field, $available_fields)) {
-                            $update_fields[] = "$db_field = :$input_key";
-                            $bindings[":$input_key"] = $data[$input_key];
-                        }
+                    }
+                } else {
+                    if (in_array($db_field, $available_fields)) {
+                        $update_fields[] = "$db_field = :$input_key"; $bindings[":$input_key"] = $data[$input_key];
                     }
                 }
             }
             
-            // Обновление alt_name при изменении заголовка
             if (isset($data['title']) && in_array('alt_name', $available_fields)) {
                 $alt_name = $data['alt_name'] ?? $this->createAltName($data['title']);
-                $update_fields[] = "alt_name = :alt_name";
-                $bindings[":alt_name"] = $alt_name;
+                $update_fields[] = "alt_name = :alt_name"; $bindings[":alt_name"] = $alt_name;
             }
             
-            // Дополнительные поля
             if (isset($data['xfields']) && in_array('xfields', $available_fields)) {
                 $xf_array = [];
-                foreach ($data['xfields'] as $field => $value) {
-                    $xf_array[] = $field . '|' . $value;
-                }
-                $update_fields[] = "xfields = :xfields";
-                $bindings[":xfields"] = implode('||', $xf_array);
+                foreach ($data['xfields'] as $f => $v) { $xf_array[] = "$f|$v"; }
+                $update_fields[] = "xfields = :xfields"; $bindings[":xfields"] = implode('||', $xf_array);
             }
             
-            if (empty($update_fields)) {
-                return $this->sendError('Нет полей для обновления', 400);
-            }
+            if (empty($update_fields)) return $this->sendError('Нет полей для обновления', 400);
             
             $bindings[':news_id'] = $news_id;
-            
             $sql = "UPDATE `{$this->post_table}` SET " . implode(', ', $update_fields) . " WHERE id = :news_id";
+            $upd_stmt = $this->db->prepare($sql);
+            $upd_stmt->execute($bindings);
+            $affected_rows = $upd_stmt->rowCount();
             
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute($bindings);
+            // Rebuild
+            $title = $data['title'] ?? $existing['title'];
+            $short_story = $data['short_story'] ?? $existing['short_story'];
+            $full_story = $data['full_story'] ?? $existing['full_story'];
+            $rebuild_ok = $this->rebuildNewsEntry($news_id, $title, $short_story, $full_story);
             
-            $affected_rows = $stmt->rowCount();
+            if (!empty($data['tags'])) $this->updateNewsTags($news_id, $data['tags']);
+            if (!empty($data['xfields'])) $this->updateXfSearch($news_id, $data['xfields']);
+            
+            $this->clearDLECache();
             
             return $this->sendSuccess([
-                'news_id' => $news_id,
-                'updated_fields' => count($update_fields),
-                'affected_rows' => $affected_rows
-            ], 'Новость успешно обновлена');
+                'news_id' => $news_id, 'updated_fields' => count($update_fields),
+                'rebuild' => $rebuild_ok ? 'ok' : 'failed'
+            ], 'Новость обновлена');
             
         } catch (PDOException $e) {
-            $this->log('Ошибка обновления новости: ' . $e->getMessage());
+            $this->log('Ошибка обновления: ' . $e->getMessage());
             return $this->sendError('Ошибка базы данных', 500);
         }
     }
     
-    /**
-     * Удаление новости
-     */
+    // ========================================================================
+    // УДАЛЕНИЕ НОВОСТИ (с очисткой всех связанных таблиц)
+    // ========================================================================
+    
     private function deleteNews($data) {
         $news_id = intval($data['news_id'] ?? $data['id'] ?? 0);
-        
-        if (!$news_id) {
-            return $this->sendError('ID новости не указан', 400);
-        }
+        if (!$news_id) return $this->sendError('ID новости не указан', 400);
         
         if (!$this->db_connected || !$this->post_table) {
-            return $this->sendSuccess([
-                'news_id' => $news_id,
-                'test_mode' => true
-            ], 'Тестовое удаление');
+            return $this->sendSuccess(['news_id' => $news_id, 'test_mode' => true], 'Тестовое удаление');
         }
         
         try {
-            // Проверяем существование новости
             $check_stmt = $this->db->prepare("SELECT id, title FROM `{$this->post_table}` WHERE id = ?");
             $check_stmt->execute([$news_id]);
             $news = $check_stmt->fetch();
+            if (!$news) return $this->sendError('Новость не найдена', 404);
             
-            if (!$news) {
-                return $this->sendError('Новость не найдена', 404);
-            }
+            // Очищаем ВСЕ связанные таблицы
+            $this->cleanupRelatedTables($news_id);
             
-            // Удаление
-            $delete_stmt = $this->db->prepare("DELETE FROM `{$this->post_table}` WHERE id = ?");
-            $delete_stmt->execute([$news_id]);
+            // Удаляем новость
+            $this->db->prepare("DELETE FROM `{$this->post_table}` WHERE id = ?")->execute([$news_id]);
             
-            $affected_rows = $delete_stmt->rowCount();
+            $this->clearDLECache();
             
-            if ($affected_rows > 0) {
-                return $this->sendSuccess([
-                    'news_id' => $news_id,
-                    'title' => $news['title'],
-                    'deleted' => true
-                ], 'Новость успешно удалена');
-            } else {
-                return $this->sendError('Не удалось удалить новость', 500);
-            }
+            return $this->sendSuccess([
+                'news_id' => $news_id, 'title' => $news['title'], 'deleted' => true, 'cleanup' => true
+            ], 'Новость удалена');
             
         } catch (PDOException $e) {
-            $this->log('Ошибка удаления новости: ' . $e->getMessage());
+            $this->log('Ошибка удаления: ' . $e->getMessage());
             return $this->sendError('Ошибка базы данных', 500);
         }
     }
     
     /**
-     * Получение статуса новости
+     * Очистка связанных таблиц при удалении
      */
-    private function getNewsStatus($data) {
-        $news_id = intval($data['news_id'] ?? $data['id'] ?? 0);
+    private function cleanupRelatedTables($news_id) {
+        $tables_to_clean = [
+            'post_extras' => 'news_id',
+            'post_extras_cats' => 'news_id',
+            'tags' => 'news_id',
+            'xfsearch' => 'news_id',
+            'comments' => 'post_id',
+        ];
         
-        if (!$news_id) {
-            return $this->sendError('ID новости не указан', 400);
+        foreach ($tables_to_clean as $suffix => $id_field) {
+            $table = DB_PREFIX . $suffix;
+            if ($this->tableExists($table)) {
+                try {
+                    $this->db->prepare("DELETE FROM `$table` WHERE $id_field = ?")->execute([$news_id]);
+                } catch (PDOException $e) {
+                    $this->log("Ошибка очистки $table: " . $e->getMessage());
+                }
+            }
         }
         
+        // Удаляем из related_ids других новостей
+        $this->removeFromRelatedIds($news_id);
+        
+        $this->log("Cleanup OK для новости ID: $news_id");
+    }
+    
+    /**
+     * Удаление ID из related_ids других новостей
+     */
+    private function removeFromRelatedIds($news_id) {
+        $extras_table = DB_PREFIX . 'post_extras';
+        if (!$this->tableExists($extras_table)) return;
+        
+        try {
+            $ext_fields = $this->getTableFields($extras_table);
+            if (!in_array('related_ids', $ext_fields)) return;
+            
+            $stmt = $this->db->prepare("SELECT news_id, related_ids FROM `$extras_table` WHERE related_ids LIKE ?");
+            $stmt->execute(["%$news_id%"]);
+            
+            foreach ($stmt->fetchAll() as $row) {
+                $ids = array_filter(explode(',', $row['related_ids']), function($id) use ($news_id) {
+                    return intval(trim($id)) !== intval($news_id) && intval(trim($id)) > 0;
+                });
+                $this->db->prepare("UPDATE `$extras_table` SET related_ids = ? WHERE news_id = ?")
+                    ->execute([implode(',', $ids), $row['news_id']]);
+            }
+        } catch (PDOException $e) {
+            $this->log('Ошибка related_ids cleanup: ' . $e->getMessage());
+        }
+    }
+    
+    // ========================================================================
+    // REBUILD - ЭМУЛЯЦИЯ DLE rebuild
+    // Совместимость: DLE 13.x - 18.1+
+    // Обновляет: post_extras, post_extras_cats, full_search, meta description
+    // Без этой функции новости НЕ появляются на главной!
+    // ========================================================================
+    
+    private function rebuildNewsEntry($news_id, $title, $short_story, $full_story) {
+        if (!$this->db_connected || !$this->post_table) return false;
+        
+        try {
+            $stmt = $this->db->prepare("SELECT category, approve FROM {$this->post_table} WHERE id = ?");
+            $stmt->execute([$news_id]);
+            $news = $stmt->fetch();
+            if (!$news) { $this->log("Rebuild: новость ID $news_id не найдена"); return false; }
+            
+            // === 1. dle_post_extras ===
+            $extras_table = DB_PREFIX . 'post_extras';
+            if ($this->tableExists($extras_table)) {
+                $ext_check = $this->db->prepare("SELECT news_id FROM `$extras_table` WHERE news_id = ?");
+                $ext_check->execute([$news_id]);
+                
+                if (!$ext_check->fetch()) {
+                    $ext_fields = $this->getTableFields($extras_table);
+                    
+                    $ins_cols = ['news_id'];
+                    $ins_vals = [$news_id];
+                    $ins_placeholders = ['?'];
+                    
+                    if (in_array('allow_rate', $ext_fields)) {
+                        $ins_cols[] = 'allow_rate'; $ins_vals[] = 1; $ins_placeholders[] = '?';
+                    }
+                    if (in_array('related_ids', $ext_fields)) {
+                        $ins_cols[] = 'related_ids'; $ins_vals[] = ''; $ins_placeholders[] = '?';
+                    }
+                    if (in_array('news_password', $ext_fields)) {
+                        $ins_cols[] = 'news_password'; $ins_vals[] = ''; $ins_placeholders[] = '?';
+                    }
+                    
+                    $sql = "INSERT INTO `$extras_table` (" . implode(', ', $ins_cols) . ") VALUES (" . implode(', ', $ins_placeholders) . ")";
+                    $this->db->prepare($sql)->execute($ins_vals);
+                    $this->log("post_extras создан для ID: $news_id");
+                }
+            }
+            
+            // === 2. dle_post_extras_cats (DLE 13+) ===
+            $extras_cats_table = DB_PREFIX . 'post_extras_cats';
+            if ($this->tableExists($extras_cats_table)) {
+                $this->db->prepare("DELETE FROM `$extras_cats_table` WHERE news_id = ?")->execute([$news_id]);
+                
+                if ($news['category'] && $news['approve']) {
+                    $cat_ids = array_filter(array_map('intval', explode(',', $news['category'])), function($id) { return $id > 0; });
+                    
+                    if (!empty($cat_ids)) {
+                        $cat_values = array_map(function($cat_id) use ($news_id) { return "($news_id, $cat_id)"; }, $cat_ids);
+                        $this->db->query("INSERT INTO `$extras_cats_table` (news_id, cat_id) VALUES " . implode(', ', $cat_values));
+                        $this->log("post_extras_cats: $news_id -> " . count($cat_ids) . " категорий");
+                    }
+                }
+            }
+            
+            // === 3. Поисковый индекс и мета в dle_post ===
+            $search_text = strip_tags($title . ' ' . $short_story . ' ' . $full_story);
+            $search_text = preg_replace('/\s+/', ' ', $search_text);
+            $search_text = mb_substr($search_text, 0, 5000, 'UTF-8');
+            
+            $post_fields = $this->getTableFields($this->post_table);
+            $update_parts = []; $bindings = [];
+            
+            if (in_array('full_search', $post_fields)) {
+                $update_parts[] = "full_search = ?"; $bindings[] = $search_text;
+            }
+            if (in_array('descr', $post_fields)) {
+                $meta = mb_substr(strip_tags($short_story), 0, 200, 'UTF-8');
+                $update_parts[] = "descr = IF(descr = '' OR descr IS NULL, ?, descr)"; $bindings[] = $meta;
+            }
+            if (in_array('metatitle', $post_fields)) {
+                $update_parts[] = "metatitle = IF(metatitle = '' OR metatitle IS NULL, ?, metatitle)";
+                $bindings[] = mb_substr($title, 0, 200, 'UTF-8');
+            }
+            
+            if (!empty($update_parts)) {
+                $bindings[] = $news_id;
+                $this->db->prepare("UPDATE `{$this->post_table}` SET " . implode(', ', $update_parts) . " WHERE id = ?")
+                    ->execute($bindings);
+            }
+            
+            $this->log("Rebuild OK: ID $news_id");
+            return true;
+            
+        } catch (PDOException $e) {
+            $this->log('Rebuild FAIL: ' . $e->getMessage());
+            return false;
+        }
+    }
+    
+    // ========================================================================
+    // ТЕГИ И XFSEARCH
+    // ========================================================================
+    
+    /**
+     * Обновление тегов новости (DLE 13+)
+     */
+    private function updateNewsTags($news_id, $tags_string) {
+        $tags_table = DB_PREFIX . 'tags';
+        if (!$this->tableExists($tags_table)) return;
+        
+        try {
+            $this->db->prepare("DELETE FROM `$tags_table` WHERE news_id = ?")->execute([$news_id]);
+            
+            $tags = array_filter(array_map('trim', explode(',', $tags_string)));
+            if (empty($tags)) return;
+            
+            $tag_fields = $this->getTableFields($tags_table);
+            
+            foreach ($tags as $tag) {
+                $ins = ['news_id' => $news_id];
+                if (in_array('tag', $tag_fields)) $ins['tag'] = mb_strtolower($tag, 'UTF-8');
+                
+                $cols = implode(', ', array_keys($ins));
+                $placeholders = implode(', ', array_fill(0, count($ins), '?'));
+                $this->db->prepare("INSERT INTO `$tags_table` ($cols) VALUES ($placeholders)")->execute(array_values($ins));
+            }
+            
+            $this->log("Теги обновлены для ID $news_id: " . count($tags));
+        } catch (PDOException $e) {
+            $this->log('Ошибка тегов: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Обновление индекса xfsearch (DLE 15+)
+     */
+    private function updateXfSearch($news_id, $xfields) {
+        $xf_table = DB_PREFIX . 'xfsearch';
+        if (!$this->tableExists($xf_table) || !is_array($xfields)) return;
+        
+        try {
+            $this->db->prepare("DELETE FROM `$xf_table` WHERE news_id = ?")->execute([$news_id]);
+            
+            $xf_fields = $this->getTableFields($xf_table);
+            
+            foreach ($xfields as $name => $value) {
+                if (empty($value)) continue;
+                
+                $ins = ['news_id' => $news_id];
+                if (in_array('tagname', $xf_fields)) $ins['tagname'] = $name;
+                if (in_array('tagvalue', $xf_fields)) $ins['tagvalue'] = $value;
+                
+                if (count($ins) > 1) {
+                    $cols = implode(', ', array_keys($ins));
+                    $placeholders = implode(', ', array_fill(0, count($ins), '?'));
+                    $this->db->prepare("INSERT INTO `$xf_table` ($cols) VALUES ($placeholders)")->execute(array_values($ins));
+                }
+            }
+            
+            $this->log("xfsearch обновлён для ID $news_id");
+        } catch (PDOException $e) {
+            $this->log('Ошибка xfsearch: ' . $e->getMessage());
+        }
+    }
+    
+    // ========================================================================
+    // ОЧИСТКА КЕША DLE
+    // ========================================================================
+    
+    private function clearDLECache() {
+        $cache_dirs = [];
+        
+        if (DLE_ROOT && is_dir(DLE_ROOT)) {
+            $cache_dirs[] = DLE_ROOT . '/engine/cache/';
+            $cache_dirs[] = DLE_ROOT . '/engine/cache/system/';
+        }
+        
+        // Автопоиск кеша относительно api.php
+        $dir = dirname(__FILE__);
+        foreach ([$dir, dirname($dir), dirname(dirname($dir))] as $root) {
+            if (is_dir($root . '/engine/cache/')) {
+                $cache_dirs[] = $root . '/engine/cache/';
+                $cache_dirs[] = $root . '/engine/cache/system/';
+                break;
+            }
+        }
+        
+        $cleared = 0;
+        foreach (array_unique($cache_dirs) as $dir) {
+            if (!is_dir($dir)) continue;
+            foreach (['*.tmp', '*.php'] as $pattern) {
+                $files = glob($dir . $pattern);
+                if ($files) foreach ($files as $file) { if (is_file($file) && @unlink($file)) $cleared++; }
+            }
+        }
+        
+        if ($cleared > 0) $this->log("Кеш DLE: очищено $cleared файлов");
+    }
+    
+    // ========================================================================
+    // СТАТУС И СТАТИСТИКА
+    // ========================================================================
+    
+    private function getNewsStatus($data) {
+        $news_id = intval($data['news_id'] ?? $data['id'] ?? 0);
+        if (!$news_id) return $this->sendError('ID новости не указан', 400);
+        
         if (!$this->db_connected || !$this->post_table) {
-            return $this->sendSuccess([
-                'news_id' => $news_id,
-                'title' => 'Тестовая новость #' . $news_id,
-                'approved' => 1,
-                'test_mode' => true
-            ]);
+            return $this->sendSuccess(['news_id' => $news_id, 'title' => 'Тест #' . $news_id, 'approved' => 1, 'test_mode' => true]);
         }
         
         try {
-            // Получение структуры таблицы
-            $structure = $this->db->query("DESCRIBE `{$this->post_table}`");
-            $columns = $structure->fetchAll();
-            $available_fields = array_column($columns, 'Field');
+            $available_fields = $this->getTableFields($this->post_table);
             
             $select_fields = ['id', 'title'];
             if (in_array('approve', $available_fields)) $select_fields[] = 'approve';
@@ -1253,214 +1188,166 @@ class FullDLEAPI {
             if (in_array('news_read', $available_fields)) $select_fields[] = 'news_read as views';
             if (in_array('comm_num', $available_fields)) $select_fields[] = 'comm_num as comments';
             
-            $sql = "SELECT " . implode(', ', $select_fields) . " FROM `{$this->post_table}` WHERE id = ?";
-            $stmt = $this->db->prepare($sql);
+            $stmt = $this->db->prepare("SELECT " . implode(', ', $select_fields) . " FROM `{$this->post_table}` WHERE id = ?");
             $stmt->execute([$news_id]);
             $news = $stmt->fetch();
+            if (!$news) return $this->sendError('Новость не найдена', 404);
             
-            if (!$news) {
-                return $this->sendError('Новость не найдена', 404);
+            // Инфо из extras
+            $extras_table = DB_PREFIX . 'post_extras';
+            if ($this->tableExists($extras_table)) {
+                $ext_stmt = $this->db->prepare("SELECT * FROM `$extras_table` WHERE news_id = ?");
+                $ext_stmt->execute([$news_id]);
+                $ext = $ext_stmt->fetch();
+                $news['has_extras'] = (bool)$ext;
+                if ($ext && isset($ext['related_ids'])) $news['has_related'] = !empty($ext['related_ids']);
+            }
+            
+            // Кол-во категорий в индексе
+            $cats_table = DB_PREFIX . 'post_extras_cats';
+            if ($this->tableExists($cats_table)) {
+                $cat_stmt = $this->db->prepare("SELECT COUNT(*) as cnt FROM `$cats_table` WHERE news_id = ?");
+                $cat_stmt->execute([$news_id]);
+                $news['categories_indexed'] = intval($cat_stmt->fetch()['cnt']);
             }
             
             return $this->sendSuccess($news);
             
         } catch (PDOException $e) {
-            $this->log('Ошибка получения статуса новости: ' . $e->getMessage());
+            $this->log('Ошибка статуса: ' . $e->getMessage());
             return $this->sendError('Ошибка базы данных', 500);
         }
     }
     
-    /**
-     * Получение статистики
-     */
     private function getStats() {
         if (!$this->db_connected || !$this->post_table) {
-            return $this->sendSuccess([
-                'total_news' => 150,
-                'approved_news' => 140,
-                'pending_news' => 10,
-                'total_categories' => 5,
-                'test_mode' => true
-            ], 'Тестовая статистика');
+            return $this->sendSuccess(['total_news' => 150, 'approved_news' => 140, 'pending_news' => 10, 'total_categories' => 5, 'test_mode' => true], 'Тестовая статистика');
         }
         
         try {
             $stats = [];
+            $available_fields = $this->getTableFields($this->post_table);
             
-            // Общее количество новостей
-            $total_stmt = $this->db->query("SELECT COUNT(*) as total FROM `{$this->post_table}`");
-            $stats['total_news'] = $total_stmt->fetch()['total'];
+            $stats['total_news'] = $this->db->query("SELECT COUNT(*) as c FROM `{$this->post_table}`")->fetch()['c'];
             
-            // Получение структуры таблицы
-            $structure = $this->db->query("DESCRIBE `{$this->post_table}`");
-            $columns = $structure->fetchAll();
-            $available_fields = array_column($columns, 'Field');
-            
-            // Одобренные новости
             if (in_array('approve', $available_fields)) {
-                $approved_stmt = $this->db->query("SELECT COUNT(*) as approved FROM `{$this->post_table}` WHERE approve = 1");
-                $stats['approved_news'] = $approved_stmt->fetch()['approved'];
+                $stats['approved_news'] = $this->db->query("SELECT COUNT(*) as c FROM `{$this->post_table}` WHERE approve = 1")->fetch()['c'];
                 $stats['pending_news'] = $stats['total_news'] - $stats['approved_news'];
             }
             
-            // Количество категорий
             if ($this->category_table) {
-                $cat_stmt = $this->db->query("SELECT COUNT(*) as total FROM `{$this->category_table}`");
-                $stats['total_categories'] = $cat_stmt->fetch()['total'];
+                $stats['total_categories'] = $this->db->query("SELECT COUNT(*) as c FROM `{$this->category_table}`")->fetch()['c'];
             }
             
-            // Статистика просмотров
             if (in_array('news_read', $available_fields)) {
-                $views_stmt = $this->db->query("SELECT SUM(news_read) as total_views, AVG(news_read) as avg_views FROM `{$this->post_table}`");
-                $views_data = $views_stmt->fetch();
-                $stats['total_views'] = intval($views_data['total_views']);
-                $stats['average_views'] = round($views_data['avg_views'], 2);
+                $v = $this->db->query("SELECT SUM(news_read) as s, AVG(news_read) as a FROM `{$this->post_table}`")->fetch();
+                $stats['total_views'] = intval($v['s']);
+                $stats['average_views'] = round($v['a'], 2);
             }
             
-            // Статистика комментариев
             if (in_array('comm_num', $available_fields)) {
-                $comments_stmt = $this->db->query("SELECT SUM(comm_num) as total_comments FROM `{$this->post_table}`");
-                $stats['total_comments'] = intval($comments_stmt->fetch()['total_comments']);
+                $stats['total_comments'] = intval($this->db->query("SELECT SUM(comm_num) as c FROM `{$this->post_table}`")->fetch()['c']);
             }
             
-            // Популярные новости
             if (in_array('news_read', $available_fields)) {
-                $popular_stmt = $this->db->prepare("SELECT id, title, news_read as views FROM `{$this->post_table}` ORDER BY news_read DESC LIMIT 5");
-                $popular_stmt->execute();
-                $stats['popular_news'] = $popular_stmt->fetchAll();
+                $stats['popular_news'] = $this->db->query("SELECT id, title, news_read as views FROM `{$this->post_table}` ORDER BY news_read DESC LIMIT 5")->fetchAll();
             }
+            
+            $stats['dle_version'] = $this->dle_version ?: 'unknown';
             
             return $this->sendSuccess($stats);
             
         } catch (PDOException $e) {
-            $this->log('Ошибка получения статистики: ' . $e->getMessage());
+            $this->log('Ошибка статистики: ' . $e->getMessage());
             return $this->sendError('Ошибка базы данных', 500);
         }
     }
     
+    // ========================================================================
+    // УТИЛИТЫ
+    // ========================================================================
+    
     /**
-     * Создание alt_name
+     * Получение полей таблицы (с кешированием в рамках запроса)
      */
+    private $table_fields_cache = [];
+    
+    private function getTableFields($table) {
+        if (isset($this->table_fields_cache[$table])) {
+            return $this->table_fields_cache[$table];
+        }
+        
+        try {
+            $stmt = $this->db->query("DESCRIBE `$table`");
+            $fields = array_column($stmt->fetchAll(), 'Field');
+            $this->table_fields_cache[$table] = $fields;
+            return $fields;
+        } catch (PDOException $e) {
+            return [];
+        }
+    }
+    
     private function createAltName($title) {
         $alt_name = mb_strtolower($title, 'UTF-8');
         
-        // Транслитерация
-        $ru = ['а','б','в','г','д','е','ё','ж','з','и','й','к','л','м','н','о','п','р','с','т','у','ф','х','ц','ч','ш','щ','ъ','ы','ь','э','ю','я'];
-        $en = ['a','b','v','g','d','e','yo','zh','z','i','y','k','l','m','n','o','p','r','s','t','u','f','h','ts','ch','sh','sch','','y','','e','yu','ya'];
-        $alt_name = str_replace($ru, $en, $alt_name);
+        // Транслитерация (кириллица + украинские буквы)
+        $from = ['а','б','в','г','ґ','д','е','ё','є','ж','з','и','і','ї','й','к','л','м','н','о','п','р','с','т','у','ф','х','ц','ч','ш','щ','ъ','ы','ь','э','ю','я'];
+        $to   = ['a','b','v','g','g','d','e','yo','ye','zh','z','i','i','yi','y','k','l','m','n','o','p','r','s','t','u','f','h','ts','ch','sh','sch','','y','','e','yu','ya'];
+        $alt_name = str_replace($from, $to, $alt_name);
         
-        // Очистка
         $alt_name = preg_replace('/[^a-z0-9\-_]/', '-', $alt_name);
         $alt_name = preg_replace('/-+/', '-', $alt_name);
         $alt_name = trim($alt_name, '-');
         
-        // Ограничение длины
         if (strlen($alt_name) > 50) {
             $alt_name = substr($alt_name, 0, 50);
             $alt_name = rtrim($alt_name, '-');
         }
         
-        // Уникальность
         $alt_name .= '-' . time();
-        
         return $alt_name;
     }
     
-    /**
-     * Получение URL новости
-     */
     private function getNewsUrl($id, $alt_name) {
         $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
         $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
         return "$protocol://$host/$id-$alt_name.html";
     }
     
-    /**
-     * Успешный ответ
-     */
     private function sendSuccess($data = [], $message = null) {
-        $response = [
-            'success' => true,
-            'data' => $data,
-            'timestamp' => time(),
-            'api_version' => API_VERSION
-        ];
-        
-        if ($message) {
-            $response['message'] = $message;
-        }
-        
-        $this->log('Успешный ответ: ' . json_encode($response, JSON_UNESCAPED_UNICODE));
+        $response = ['success' => true, 'data' => $data, 'timestamp' => time(), 'api_version' => API_VERSION];
+        if ($message) $response['message'] = $message;
+        $this->log('OK: ' . ($message ?: 'success'));
         echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
         exit;
     }
     
-    /**
-     * Ответ с ошибкой
-     */
     private function sendError($message, $code = 400) {
         http_response_code($code);
-        
-        $response = [
-            'success' => false,
-            'error' => $message,
-            'code' => $code,
-            'timestamp' => time(),
-            'api_version' => API_VERSION
-        ];
-        
-        $this->log("Ошибка ($code): $message");
+        $response = ['success' => false, 'error' => $message, 'code' => $code, 'timestamp' => time(), 'api_version' => API_VERSION];
+        $this->log("ERR ($code): $message");
         echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
         exit;
     }
     
-    /**
-     * Логирование
-     */
     private function log($message) {
-        $timestamp = date('Y-m-d H:i:s');
-        $log_entry = "[$timestamp] $message\n";
-        
-        // Пробуем записать лог
-        $log_files = [
-            'api.log',
-            sys_get_temp_dir() . '/dle_api.log'
-        ];
-        
-        foreach ($log_files as $log_file) {
-            if (@file_put_contents($log_file, $log_entry, FILE_APPEND | LOCK_EX)) {
-                break;
-            }
+        $log_entry = "[" . date('Y-m-d H:i:s') . "] $message\n";
+        foreach (['api.log', sys_get_temp_dir() . '/dle_api.log'] as $f) {
+            if (@file_put_contents($f, $log_entry, FILE_APPEND | LOCK_EX)) break;
         }
     }
     
-    /**
-     * Логирование запроса
-     */
     private function logRequest() {
-        $request_info = [
-            'method' => $_SERVER['REQUEST_METHOD'],
-            'uri' => $_SERVER['REQUEST_URI'] ?? '',
-            'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? '',
-            'ip' => $_SERVER['REMOTE_ADDR'] ?? '',
-            'time' => date('Y-m-d H:i:s')
-        ];
-        
-        $this->log('Новый запрос: ' . json_encode($request_info, JSON_UNESCAPED_UNICODE));
+        $this->log('REQ: ' . ($_SERVER['REQUEST_METHOD'] ?? '') . ' ' . ($_SERVER['REQUEST_URI'] ?? '') . ' [' . ($_SERVER['REMOTE_ADDR'] ?? '') . ']');
     }
 }
 
-// Запуск API
+// Запуск
 try {
     $api = new FullDLEAPI();
     $api->handleRequest();
 } catch (Exception $e) {
     http_response_code(500);
-    echo json_encode([
-        'success' => false,
-        'error' => 'Критическая ошибка инициализации API: ' . $e->getMessage(),
-        'code' => 500,
-        'timestamp' => time()
-    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    echo json_encode(['success' => false, 'error' => 'Init error: ' . $e->getMessage(), 'code' => 500, 'timestamp' => time()], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 }
 ?>
