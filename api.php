@@ -15,13 +15,31 @@ define('API_RATE_LIMIT', 100);
 
 // Настройки подключения к БД (заполните своими данными)
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'dle18');
-define('DB_USER', 'dle18');
-define('DB_PASS', 'dle18');
+define('DB_NAME', 'dle19');
+define('DB_USER', 'dle19');
+define('DB_PASS', 'dle19');
 define('DB_PREFIX', 'dle_'); // Префикс таблиц DLE
 
 // Путь к корню DLE (для очистки кеша). Оставьте пустым если не нужно
 define('DLE_ROOT', ''); // например: '/var/www/html/mysite'
+
+// Путь к папке uploads DLE (для сохранения постеров)
+// Автоопределение: api.php лежит в корне DLE, uploads рядом
+define('DLE_UPLOADS_DIR', __DIR__ . '/uploads/posts/');
+// URL-префикс для доступа к загруженным файлам
+define('DLE_UPLOADS_URL', '/uploads/posts/');
+
+// Настройки постера
+define('POSTER_FORMAT', 'webp');    // Формат: 'jpg', 'png', 'webp' или 'original' (не конвертировать)
+define('POSTER_QUALITY', 85);       // Качество: 1-100 (для jpg и webp)
+define('POSTER_MAX_WIDTH', 230);    // Максимальная ширина в px (0 = не ресайзить)
+define('POSTER_MAX_HEIGHT', 335);   // Максимальная высота в px (0 = не ресайзить)
+
+// Настройки загрузки файлов
+define('FILES_UPLOAD_DIR', __DIR__ . '/uploads/files/');
+define('FILES_UPLOAD_URL', '/uploads/files/');
+define('FILES_MAX_SIZE', 100 * 1024 * 1024);  // Максимальный размер: 100 MB
+define('FILES_ALLOWED_EXT', 'zip,rar,7z,tar,gz,pdf,doc,docx,xls,xlsx,txt,csv'); // Разрешённые расширения
 
 // Отключаем отображение ошибок в продакшене
 error_reporting(E_ALL);
@@ -212,6 +230,7 @@ class FullDLEAPI {
                 case 'get_categories': return $this->getCategories();
                 case 'add_category':  return $this->addCategory($input);
                 case 'get_stats':     return $this->getStats();
+                case 'upload_file':   return $this->uploadFile($input);
                 case 'test':
                 case 'test_connection':
                 default:
@@ -345,7 +364,7 @@ class FullDLEAPI {
                 'add_news', 'update_news', 'delete_news', 'get_news_status',
                 'get_news', 'get_news_by_id', 'search_news',
                 'get_categories', 'add_category',
-                'get_stats'
+                'get_stats', 'upload_file'
             ]
         ];
         
@@ -695,7 +714,7 @@ class FullDLEAPI {
             $full_story = $data['full_story'];
             $category = $data['category'] ?? '1';
             $author = $data['author'] ?? 'admin';
-            $date = date('Y-m-d H:i:s');
+            $date = gmdate('Y-m-d H:i:s'); // UTC — совпадает с часовым поясом DLE
             $alt_name = $data['alt_name'] ?? $this->createAltName($title);
             
             $fields = []; $values = []; $bindings = [];
@@ -772,15 +791,51 @@ class FullDLEAPI {
                 // Индекс xfsearch
                 if (!empty($data['xfields'])) $this->updateXfSearch($news_id, $data['xfields']);
                 
+                // Скачивание постера (если есть URL в xfields)
+                $poster_result = null;
+                if (!empty($data['xfields']['poster']) && filter_var($data['xfields']['poster'], FILTER_VALIDATE_URL)) {
+                    $poster_result = $this->downloadPoster($data['xfields']['poster'], $news_id);
+                    
+                    if ($poster_result['success']) {
+                        // Обновляем xfield poster на локальный путь
+                        $data['xfields']['poster'] = $poster_result['local_url'];
+                        
+                        // Пересобираем xfields строку и обновляем в БД
+                        $xf_array = [];
+                        foreach ($data['xfields'] as $f => $v) { $xf_array[] = "$f|$v"; }
+                        $xf_value = implode('||', $xf_array);
+                        
+                        $this->db->prepare("UPDATE `{$this->post_table}` SET xfields = ? WHERE id = ?")
+                            ->execute([$xf_value, $news_id]);
+                        
+                        // Обновляем поле images в dle_post (DLE использует его для галереи)
+                        $post_fields = $this->getTableFields($this->post_table);
+                        if (in_array('images', $post_fields)) {
+                            $this->db->prepare("UPDATE `{$this->post_table}` SET images = ? WHERE id = ?")
+                                ->execute([$poster_result['local_url'], $news_id]);
+                        }
+                        
+                        $this->log("Постер привязан к новости ID $news_id: " . $poster_result['local_url']);
+                    }
+                }
+                
                 // Очистка кеша
                 $this->clearDLECache();
                 
-                return $this->sendSuccess([
+                $response_data = [
                     'news_id' => $news_id, 'title' => $title, 'alt_name' => $alt_name,
                     'url' => $this->getNewsUrl($news_id, $alt_name),
                     'table_used' => $this->post_table, 'fields_used' => count($fields),
                     'rebuild' => $rebuild_ok ? 'ok' : 'failed'
-                ], 'Новость успешно добавлена');
+                ];
+                
+                if ($poster_result) {
+                    $response_data['poster'] = $poster_result['success'] 
+                        ? ['saved' => true, 'url' => $poster_result['local_url'], 'size' => $poster_result['size']]
+                        : ['saved' => false, 'error' => $poster_result['error']];
+                }
+                
+                return $this->sendSuccess($response_data, 'Новость успешно добавлена');
             }
             
             return $this->sendError('Не удалось получить ID записи', 500);
@@ -1114,10 +1169,15 @@ class FullDLEAPI {
             
             foreach ($xfields as $name => $value) {
                 if (empty($value)) continue;
+                // Пропускаем поля с длинным контентом — они не нужны в поисковом индексе
+                if (in_array($name, ['story', 'poster', 'youtube'])) continue;
                 
                 $ins = ['news_id' => $news_id];
                 if (in_array('tagname', $xf_fields)) $ins['tagname'] = $name;
-                if (in_array('tagvalue', $xf_fields)) $ins['tagvalue'] = $value;
+                if (in_array('tagvalue', $xf_fields)) {
+                    $val = is_array($value) ? implode(', ', $value) : (string)$value;
+                    $ins['tagvalue'] = mb_substr($val, 0, 100, 'UTF-8');
+                }
                 
                 if (count($ins) > 1) {
                     $cols = implode(', ', array_keys($ins));
@@ -1135,6 +1195,393 @@ class FullDLEAPI {
     // ========================================================================
     // ОЧИСТКА КЕША DLE
     // ========================================================================
+    
+    // ========================================================================
+    // ЗАГРУЗКА ФАЙЛОВ (ZIP, RAR, PDF и др.)
+    // ========================================================================
+    
+    /**
+     * Загрузка файла через multipart/form-data
+     * 
+     * curl -X POST https://site.com/api.php \
+     *   -F "action=upload_file" \
+     *   -F "api_key=YOUR_KEY" \
+     *   -F "file=@archive.zip" \
+     *   -F "news_id=32" \
+     *   -F "description=Доп. материалы"
+     */
+    private function uploadFile($data) {
+        // Проверяем наличие файла
+        if (empty($_FILES['file'])) {
+            return $this->sendError('Файл не загружен. Используйте multipart/form-data с полем "file"', 400);
+        }
+        
+        $file = $_FILES['file'];
+        
+        // Проверяем ошибки загрузки
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+            $upload_errors = [
+                UPLOAD_ERR_INI_SIZE   => 'Файл превышает upload_max_filesize в php.ini',
+                UPLOAD_ERR_FORM_SIZE  => 'Файл превышает MAX_FILE_SIZE',
+                UPLOAD_ERR_PARTIAL    => 'Файл загружен частично',
+                UPLOAD_ERR_NO_FILE    => 'Файл не был загружен',
+                UPLOAD_ERR_NO_TMP_DIR => 'Нет временной папки',
+                UPLOAD_ERR_CANT_WRITE => 'Ошибка записи на диск',
+                UPLOAD_ERR_EXTENSION  => 'Загрузка остановлена расширением PHP',
+            ];
+            $err_msg = $upload_errors[$file['error']] ?? "Ошибка #{$file['error']}";
+            return $this->sendError("Ошибка загрузки: $err_msg", 400);
+        }
+        
+        // Проверяем размер
+        if ($file['size'] > FILES_MAX_SIZE) {
+            $max_mb = round(FILES_MAX_SIZE / 1024 / 1024, 1);
+            return $this->sendError("Файл слишком большой. Максимум: {$max_mb} MB", 400);
+        }
+        
+        if ($file['size'] === 0) {
+            return $this->sendError('Файл пустой', 400);
+        }
+        
+        // Получаем и проверяем расширение
+        $original_name = basename($file['name']);
+        $ext = strtolower(pathinfo($original_name, PATHINFO_EXTENSION));
+        $allowed_ext = array_map('trim', explode(',', strtolower(FILES_ALLOWED_EXT)));
+        
+        if (empty($ext) || !in_array($ext, $allowed_ext)) {
+            return $this->sendError("Расширение .$ext не разрешено. Допустимые: " . FILES_ALLOWED_EXT, 400);
+        }
+        
+        // Защита от опасных файлов
+        $dangerous_ext = ['php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'php8', 'phar', 'phps', 'cgi', 'pl', 'py', 'sh', 'bash', 'exe', 'bat', 'cmd', 'com', 'scr', 'msi', 'dll', 'js', 'vbs', 'wsf', 'htaccess'];
+        if (in_array($ext, $dangerous_ext)) {
+            $this->log("Загрузка: заблокирован опасный файл .$ext — {$original_name}");
+            return $this->sendError("Файлы с расширением .$ext запрещены", 403);
+        }
+        
+        // Проверяем содержимое на PHP-код (двойное расширение и т.д.)
+        $file_content_start = file_get_contents($file['tmp_name'], false, null, 0, 4096);
+        if ($file_content_start !== false) {
+            $dangerous_patterns = ['<?php', '<?=', '<script', '#!/', 'eval(', 'base64_decode('];
+            foreach ($dangerous_patterns as $pattern) {
+                if (stripos($file_content_start, $pattern) !== false) {
+                    $this->log("Загрузка: обнаружен опасный контент в файле {$original_name}");
+                    return $this->sendError('Файл содержит потенциально опасный контент', 403);
+                }
+            }
+        }
+        
+        // Создаём подпапку по дате
+        $subdir = date('Y-m');
+        $upload_dir = rtrim(FILES_UPLOAD_DIR, '/') . '/' . $subdir . '/';
+        if (!is_dir($upload_dir)) {
+            if (!mkdir($upload_dir, 0755, true)) {
+                return $this->sendError('Не удалось создать папку для загрузки', 500);
+            }
+        }
+        
+        // Генерируем безопасное имя файла
+        $safe_name = preg_replace('/[^a-z0-9_\-]/i', '_', pathinfo($original_name, PATHINFO_FILENAME));
+        $safe_name = substr($safe_name, 0, 50); // Ограничиваем длину имени
+        $unique_id = substr(md5(uniqid(mt_rand(), true)), 0, 8);
+        $filename = $safe_name . '_' . $unique_id . '.' . $ext;
+        $filepath = $upload_dir . $filename;
+        
+        // Перемещаем файл
+        if (!move_uploaded_file($file['tmp_name'], $filepath)) {
+            return $this->sendError('Не удалось сохранить файл', 500);
+        }
+        
+        // Безопасные права (не исполняемый)
+        chmod($filepath, 0644);
+        
+        $file_url = rtrim(FILES_UPLOAD_URL, '/') . '/' . $subdir . '/' . $filename;
+        $file_size = filesize($filepath);
+        
+        $this->log("Файл загружен: $file_url ({$file_size} байт, оригинал: {$original_name})");
+        
+        // Привязка к новости (если указан news_id)
+        $news_id = intval($data['news_id'] ?? 0);
+        $linked = false;
+        
+        if ($news_id > 0 && $this->db_connected && $this->post_table) {
+            try {
+                $post_fields = $this->getTableFields($this->post_table);
+                
+                if (in_array('files', $post_fields)) {
+                    // Получаем текущие файлы
+                    $stmt = $this->db->prepare("SELECT files FROM `{$this->post_table}` WHERE id = ?");
+                    $stmt->execute([$news_id]);
+                    $row = $stmt->fetch();
+                    
+                    if ($row) {
+                        // DLE хранит файлы как: filename.ext|описание\nfilename2.ext|описание2
+                        $description = $data['description'] ?? $original_name;
+                        $file_entry = $filename . '|' . $description;
+                        
+                        $current_files = trim($row['files'] ?? '');
+                        $new_files = $current_files ? $current_files . "\n" . $file_entry : $file_entry;
+                        
+                        $this->db->prepare("UPDATE `{$this->post_table}` SET files = ? WHERE id = ?")
+                            ->execute([$new_files, $news_id]);
+                        
+                        $linked = true;
+                        $this->log("Файл привязан к новости ID $news_id");
+                    } else {
+                        $this->log("Новость ID $news_id не найдена для привязки файла");
+                    }
+                }
+            } catch (PDOException $e) {
+                $this->log("Ошибка привязки файла к новости: " . $e->getMessage());
+            }
+        }
+        
+        return $this->sendSuccess([
+            'file_url' => $file_url,
+            'filename' => $filename,
+            'original_name' => $original_name,
+            'size' => $file_size,
+            'size_human' => $this->formatFileSize($file_size),
+            'extension' => $ext,
+            'news_id' => $news_id ?: null,
+            'linked_to_news' => $linked,
+        ], 'Файл успешно загружен');
+    }
+    
+    /**
+     * Форматирование размера файла
+     */
+    private function formatFileSize($bytes) {
+        $units = ['Б', 'КБ', 'МБ', 'ГБ'];
+        $i = 0;
+        while ($bytes >= 1024 && $i < count($units) - 1) {
+            $bytes /= 1024;
+            $i++;
+        }
+        return round($bytes, 1) . ' ' . $units[$i];
+    }
+    
+    // ========================================================================
+    // БЕЗОПАСНОЕ СКАЧИВАНИЕ ПОСТЕРА
+    // ========================================================================
+    
+    /**
+     * Скачивает постер по URL и сохраняет локально
+     * @param string $url URL картинки
+     * @param int $news_id ID новости (для уникального имени файла)
+     * @return array ['success' => bool, 'local_path' => string, 'local_url' => string]
+     */
+    private function downloadPoster($url, $news_id) {
+        if (empty($url) || empty(DLE_UPLOADS_DIR)) {
+            return ['success' => false, 'error' => 'URL или путь загрузок не указан'];
+        }
+        
+        // Проверяем URL
+        $url = filter_var($url, FILTER_VALIDATE_URL);
+        if (!$url) {
+            return ['success' => false, 'error' => 'Невалидный URL'];
+        }
+        
+        // Разрешённые хосты для скачивания
+        $allowed_hosts = [
+            'avatars.mds.yandex.net',
+            'kinopoiskapiunofficial.tech',
+            'st.kp.yandex.net',
+            'image.openmoviedb.com',
+        ];
+        
+        $parsed = parse_url($url);
+        $host = $parsed['host'] ?? '';
+        $host_allowed = false;
+        foreach ($allowed_hosts as $ah) {
+            if ($host === $ah || str_ends_with($host, '.' . $ah)) {
+                $host_allowed = true;
+                break;
+            }
+        }
+        if (!$host_allowed) {
+            $this->log("Постер: хост $host не в белом списке");
+            return ['success' => false, 'error' => "Хост $host не разрешён"];
+        }
+        
+        // Создаём подпапку по дате: YYYY-MM
+        $subdir = date('Y-m');
+        $upload_dir = rtrim(DLE_UPLOADS_DIR, '/') . '/' . $subdir . '/';
+        if (!is_dir($upload_dir)) {
+            if (!mkdir($upload_dir, 0755, true)) {
+                return ['success' => false, 'error' => 'Не удалось создать папку ' . $upload_dir];
+            }
+        }
+        
+        // Скачиваем картинку
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 15,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 3,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_USERAGENT => 'Mozilla/5.0 (compatible; DLE-API/4.0)',
+            // Ограничение размера: 5 MB максимум
+            CURLOPT_MAXFILESIZE => 5 * 1024 * 1024,
+        ]);
+        
+        $image_data = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $content_type = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+        $curl_error = curl_error($ch);
+        curl_close($ch);
+        
+        if ($curl_error || $http_code !== 200 || empty($image_data)) {
+            $this->log("Постер: ошибка скачивания ($http_code) $curl_error");
+            return ['success' => false, 'error' => "HTTP $http_code: $curl_error"];
+        }
+        
+        // Проверяем Content-Type
+        $allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+        $ct_clean = strtolower(explode(';', $content_type)[0]);
+        if (!in_array($ct_clean, $allowed_types)) {
+            $this->log("Постер: недопустимый тип $ct_clean");
+            return ['success' => false, 'error' => "Недопустимый тип: $ct_clean"];
+        }
+        
+        // Проверяем что это реально картинка (magic bytes)
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $real_mime = $finfo->buffer($image_data);
+        if (!in_array($real_mime, $allowed_types)) {
+            $this->log("Постер: содержимое не картинка ($real_mime)");
+            return ['success' => false, 'error' => "Файл не является картинкой: $real_mime"];
+        }
+        
+        // Обработка: ресайз и/или конвертация формата
+        $ext_map = ['image/jpeg' => '.jpg', 'image/jpg' => '.jpg', 'image/png' => '.png', 'image/webp' => '.webp'];
+        $target_format = strtolower(POSTER_FORMAT);
+        $need_resize = (POSTER_MAX_WIDTH > 0 || POSTER_MAX_HEIGHT > 0);
+        $need_convert = ($target_format !== 'original');
+        
+        if (($need_resize || $need_convert) && extension_loaded('gd')) {
+            $processed = $this->processImage($image_data, $real_mime);
+            if ($processed['success']) {
+                $image_data = $processed['data'];
+                $ext = $processed['ext'];
+            } else {
+                $this->log("Постер: GD ошибка — " . $processed['error'] . ", сохраняем оригинал");
+                $ext = $ext_map[$real_mime] ?? '.jpg';
+            }
+        } else {
+            $ext = $ext_map[$real_mime] ?? '.jpg';
+            if (!extension_loaded('gd') && ($need_resize || $need_convert)) {
+                $this->log("Постер: GD не установлен, сохраняем оригинал");
+            }
+        }
+        
+        // Генерируем безопасное имя: news_{id}_{hash}.ext
+        $filename = 'news_' . intval($news_id) . '_' . substr(md5($url . time()), 0, 8) . $ext;
+        $filepath = $upload_dir . $filename;
+        
+        // Сохраняем
+        if (file_put_contents($filepath, $image_data) === false) {
+            return ['success' => false, 'error' => 'Не удалось сохранить файл'];
+        }
+        
+        // Устанавливаем безопасные права
+        chmod($filepath, 0644);
+        
+        $local_url = rtrim(DLE_UPLOADS_URL, '/') . '/' . $subdir . '/' . $filename;
+        
+        $this->log("Постер сохранён: $local_url (" . strlen($image_data) . " байт)");
+        
+        return [
+            'success' => true,
+            'local_path' => $filepath,
+            'local_url' => $local_url,
+            'filename' => $filename,
+            'size' => strlen($image_data)
+        ];
+    }
+    
+    /**
+     * Обработка изображения: ресайз и конвертация формата
+     */
+    private function processImage($image_data, $source_mime) {
+        // Создаём GD ресурс из бинарных данных
+        $src = @imagecreatefromstring($image_data);
+        if (!$src) {
+            return ['success' => false, 'error' => 'Не удалось открыть изображение'];
+        }
+        
+        $orig_w = imagesx($src);
+        $orig_h = imagesy($src);
+        $new_w = $orig_w;
+        $new_h = $orig_h;
+        
+        // Ресайз с сохранением пропорций
+        $max_w = POSTER_MAX_WIDTH > 0 ? POSTER_MAX_WIDTH : $orig_w;
+        $max_h = POSTER_MAX_HEIGHT > 0 ? POSTER_MAX_HEIGHT : $orig_h;
+        
+        if ($orig_w > $max_w || $orig_h > $max_h) {
+            $ratio_w = $max_w / $orig_w;
+            $ratio_h = $max_h / $orig_h;
+            $ratio = min($ratio_w, $ratio_h);
+            $new_w = (int)round($orig_w * $ratio);
+            $new_h = (int)round($orig_h * $ratio);
+        }
+        
+        // Создаём новое изображение если нужен ресайз
+        if ($new_w !== $orig_w || $new_h !== $orig_h) {
+            $dst = imagecreatetruecolor($new_w, $new_h);
+            
+            // Сохраняем прозрачность для PNG и WebP
+            imagealphablending($dst, false);
+            imagesavealpha($dst, true);
+            
+            imagecopyresampled($dst, $src, 0, 0, 0, 0, $new_w, $new_h, $orig_w, $orig_h);
+            imagedestroy($src);
+            $src = $dst;
+            
+            $this->log("Постер: ресайз {$orig_w}x{$orig_h} → {$new_w}x{$new_h}");
+        }
+        
+        // Конвертация в целевой формат
+        $target = strtolower(POSTER_FORMAT);
+        $quality = intval(POSTER_QUALITY);
+        
+        ob_start();
+        switch ($target) {
+            case 'webp':
+                if (!function_exists('imagewebp')) {
+                    ob_end_clean();
+                    imagedestroy($src);
+                    return ['success' => false, 'error' => 'WebP не поддерживается в GD'];
+                }
+                imagewebp($src, null, $quality);
+                $ext = '.webp';
+                break;
+            case 'png':
+                // PNG quality: 0-9 (0 = без сжатия, 9 = максимальное)
+                $png_quality = (int)round((100 - $quality) / 11.1);
+                imagepng($src, null, min(9, max(0, $png_quality)));
+                $ext = '.png';
+                break;
+            case 'jpg':
+            case 'jpeg':
+            default:
+                imagejpeg($src, null, $quality);
+                $ext = '.jpg';
+                break;
+        }
+        $output = ob_get_clean();
+        imagedestroy($src);
+        
+        if (empty($output)) {
+            return ['success' => false, 'error' => 'GD вернул пустой результат'];
+        }
+        
+        $this->log("Постер: конвертация → $target, качество $quality%, размер " . strlen($output) . " байт");
+        
+        return ['success' => true, 'data' => $output, 'ext' => $ext, 'width' => $new_w, 'height' => $new_h];
+    }
     
     private function clearDLECache() {
         $cache_dirs = [];
