@@ -32,7 +32,7 @@ define('DLE_UPLOADS_URL', '/uploads/posts/');
 // Настройки постера
 define('POSTER_FORMAT', 'webp');    // Формат: 'jpg', 'png', 'webp' или 'original' (не конвертировать)
 define('POSTER_QUALITY', 85);       // Качество: 1-100 (для jpg и webp)
-define('POSTER_MAX_WIDTH', 230);    // Максимальная ширина в px (0 = не ресайзить)
+define('POSTER_MAX_WIDTH', 223);    // Максимальная ширина в px (0 = не ресайзить)
 define('POSTER_MAX_HEIGHT', 335);   // Максимальная высота в px (0 = не ресайзить)
 
 // Настройки загрузки файлов
@@ -257,12 +257,18 @@ class FullDLEAPI {
         
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $raw_input = file_get_contents('php://input');
+            $this->log('RAW INPUT [' . strlen($raw_input) . ' bytes]: ' . substr($raw_input, 0, 200));
+            
             if (!empty($raw_input)) {
                 $input = json_decode($raw_input, true);
                 if (json_last_error() !== JSON_ERROR_NONE) {
-                    $this->log('JSON ошибка: ' . json_last_error_msg());
+                    $this->log('JSON ошибка: ' . json_last_error_msg() . ' | Первые 500 байт: ' . substr($raw_input, 0, 500));
                     $input = null;
+                } else {
+                    $this->log('JSON OK, action=' . ($input['action'] ?? 'NOT SET') . ', keys=' . implode(',', array_keys($input)));
                 }
+            } else {
+                $this->log('WARNING: php://input ПУСТОЙ! Content-Length=' . ($_SERVER['CONTENT_LENGTH'] ?? 'не указан') . ' Content-Type=' . ($_SERVER['CONTENT_TYPE'] ?? 'не указан'));
             }
         }
         
@@ -275,6 +281,7 @@ class FullDLEAPI {
         }
         
         if (!$input) {
+            $this->log('!!! FALLBACK: input пустой после всех проверок, возвращаю action=test');
             $input = ['action' => 'test'];
         }
         
@@ -921,12 +928,45 @@ class FullDLEAPI {
             if (!empty($data['tags'])) $this->updateNewsTags($news_id, $data['tags']);
             if (!empty($data['xfields'])) $this->updateXfSearch($news_id, $data['xfields']);
             
+            // Скачивание постера при обновлении (если есть URL)
+            $poster_result = null;
+            if (!empty($data['xfields']['poster']) && filter_var($data['xfields']['poster'], FILTER_VALIDATE_URL)) {
+                $poster_result = $this->downloadPoster($data['xfields']['poster'], $news_id);
+                
+                if ($poster_result['success']) {
+                    $data['xfields']['poster'] = $poster_result['local_url'];
+                    
+                    $xf_array = [];
+                    foreach ($data['xfields'] as $f => $v) { $xf_array[] = "$f|$v"; }
+                    $xf_value = implode('||', $xf_array);
+                    
+                    $this->db->prepare("UPDATE `{$this->post_table}` SET xfields = ? WHERE id = ?")
+                        ->execute([$xf_value, $news_id]);
+                    
+                    $post_fields = $this->getTableFields($this->post_table);
+                    if (in_array('images', $post_fields)) {
+                        $this->db->prepare("UPDATE `{$this->post_table}` SET images = ? WHERE id = ?")
+                            ->execute([$poster_result['local_url'], $news_id]);
+                    }
+                    
+                    $this->log("Постер обновлён для ID $news_id: " . $poster_result['local_url']);
+                }
+            }
+            
             $this->clearDLECache();
             
-            return $this->sendSuccess([
+            $response_data = [
                 'news_id' => $news_id, 'updated_fields' => count($update_fields),
                 'rebuild' => $rebuild_ok ? 'ok' : 'failed'
-            ], 'Новость обновлена');
+            ];
+            
+            if ($poster_result) {
+                $response_data['poster'] = $poster_result['success'] 
+                    ? ['saved' => true, 'url' => $poster_result['local_url'], 'size' => $poster_result['size']]
+                    : ['saved' => false, 'error' => $poster_result['error']];
+            }
+            
+            return $this->sendSuccess($response_data, 'Новость обновлена');
             
         } catch (PDOException $e) {
             $this->log('Ошибка обновления: ' . $e->getMessage());
@@ -1388,6 +1428,8 @@ class FullDLEAPI {
             'kinopoiskapiunofficial.tech',
             'st.kp.yandex.net',
             'image.openmoviedb.com',
+            'image.tmdb.org',
+            'media.themoviedb.org',
         ];
         
         $parsed = parse_url($url);
