@@ -32,8 +32,8 @@ define('DLE_UPLOADS_URL', '/uploads/posts/');
 // Настройки постера
 define('POSTER_FORMAT', 'webp');    // Формат: 'jpg', 'png', 'webp' или 'original' (не конвертировать)
 define('POSTER_QUALITY', 85);       // Качество: 1-100 (для jpg и webp)
-define('POSTER_MAX_WIDTH', 223);    // Максимальная ширина в px (0 = не ресайзить)
-define('POSTER_MAX_HEIGHT', 335);   // Максимальная высота в px (0 = не ресайзить)
+define('POSTER_MAX_WIDTH', 600);    // Максимальная ширина в px (0 = не ресайзить)
+define('POSTER_MAX_HEIGHT', 900);   // Максимальная высота в px (0 = не ресайзить)
 
 // Настройки загрузки файлов
 define('FILES_UPLOAD_DIR', __DIR__ . '/uploads/files/');
@@ -231,6 +231,7 @@ class FullDLEAPI {
                 case 'add_category':  return $this->addCategory($input);
                 case 'get_stats':     return $this->getStats();
                 case 'upload_file':   return $this->uploadFile($input);
+                case 'check_duplicate': return $this->checkDuplicate($input);
                 case 'test':
                 case 'test_connection':
                 default:
@@ -1658,6 +1659,87 @@ class FullDLEAPI {
     // ========================================================================
     // СТАТУС И СТАТИСТИКА
     // ========================================================================
+    
+    // ========================================================================
+    // ПРОВЕРКА ДУБЛИКАТА ПО KINOPOISK ID
+    // ========================================================================
+    
+    private function checkDuplicate($data) {
+        $kinopoisk_id = $data['kinopoisk_id'] ?? $data['kp_id'] ?? '';
+        if (empty($kinopoisk_id)) {
+            return $this->sendError('kinopoisk_id не указан', 400);
+        }
+        
+        if (!$this->db_connected || !$this->post_table) {
+            return $this->sendSuccess(['exists' => false, 'test_mode' => true]);
+        }
+        
+        try {
+            $found = null;
+            
+            // Способ 1: Поиск по таблице xfsearch (быстрый индексный поиск)
+            $xf_table = DB_PREFIX . 'xfsearch';
+            if ($this->tableExists($xf_table)) {
+                $stmt = $this->db->prepare(
+                    "SELECT news_id FROM `$xf_table` WHERE tagname = 'kinopoisk_id' AND tagvalue = ? LIMIT 1"
+                );
+                $stmt->execute([(string)$kinopoisk_id]);
+                $row = $stmt->fetch();
+                if ($row) {
+                    $found = intval($row['news_id']);
+                }
+            }
+            
+            // Способ 2: Если не нашли в xfsearch — ищем в xfields поле dle_post (LIKE поиск)
+            if (!$found) {
+                $available_fields = $this->getTableFields($this->post_table);
+                if (in_array('xfields', $available_fields)) {
+                    $pattern = 'kinopoisk_id|' . $kinopoisk_id;
+                    $stmt = $this->db->prepare(
+                        "SELECT id FROM `{$this->post_table}` WHERE xfields LIKE ? LIMIT 1"
+                    );
+                    $stmt->execute(['%' . $pattern . '%']);
+                    $row = $stmt->fetch();
+                    if ($row) {
+                        $found = intval($row['id']);
+                    }
+                }
+            }
+            
+            if ($found) {
+                // Получаем данные найденной новости
+                $available_fields = $this->getTableFields($this->post_table);
+                $select = ['id', 'title'];
+                if (in_array('alt_name', $available_fields)) $select[] = 'alt_name';
+                if (in_array('date', $available_fields)) $select[] = 'date';
+                
+                $stmt = $this->db->prepare(
+                    "SELECT " . implode(', ', $select) . " FROM `{$this->post_table}` WHERE id = ?"
+                );
+                $stmt->execute([$found]);
+                $news = $stmt->fetch();
+                
+                return $this->sendSuccess([
+                    'exists' => true,
+                    'news_id' => $found,
+                    'title' => $news['title'] ?? '',
+                    'alt_name' => $news['alt_name'] ?? '',
+                    'date' => $news['date'] ?? '',
+                    'url' => $this->getNewsUrl($found, $news['alt_name'] ?? ''),
+                    'kinopoisk_id' => $kinopoisk_id
+                ], 'Фильм уже существует в базе');
+            }
+            
+            return $this->sendSuccess([
+                'exists' => false,
+                'kinopoisk_id' => $kinopoisk_id
+            ]);
+            
+        } catch (PDOException $e) {
+            $this->log('Ошибка проверки дубликата: ' . $e->getMessage());
+            return $this->sendError('Ошибка базы данных: ' . $e->getMessage(), 500);
+        }
+    }
     
     private function getNewsStatus($data) {
         $news_id = intval($data['news_id'] ?? $data['id'] ?? 0);
