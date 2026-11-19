@@ -1,7 +1,7 @@
 # 🚀 DLE News API
 
 MCP-сервер для DataLife Engine
-https://github.com/Murkirpus/datalife-engine-mcp/tree/main
+https://github.com/Murkirpus/datalife-engine-mcp
 
 [![API Version](https://img.shields.io/badge/API%20Version-4.0-blue.svg)](https://github.com/yourusername/dle-api)
 [![PHP Version](https://img.shields.io/badge/PHP-%3E%3D8.3-green.svg)](https://www.php.net/)
